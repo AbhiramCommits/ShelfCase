@@ -6,6 +6,7 @@
 .swiftpm/
 *.xcodeproj/
 *.xcworkspace/
+apps/ios/ShelfCase/Info.plist
 DerivedData/
 *.xcuserstate
 xcuserdata/

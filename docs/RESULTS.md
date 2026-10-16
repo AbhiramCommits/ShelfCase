@@ -329,3 +329,85 @@ timeouts, dropped responses, 5xx, injected latency), `SimulatedServer` counters
 `tombstonesServed`), `APIClientMetrics` (requests, retries, conflicts, decode
 failures) and `SyncReport` (pushed / pulled / conflicts / retries / errors /
 durationMs / cursor).
+
+---
+
+## Step 4 — SwiftUI app
+
+### `xcodegen generate` — ✅ ran
+
+```
+$ cd apps/ios && xcodegen generate
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/abhiramkasireddi/ShelfCase/apps/ios/ShelfCase.xcodeproj
+```
+
+Targets present in the generated `project.pbxproj`:
+`ShelfCase`, `ShelfCaseTests`, and the local `ShelfCaseKit` package.
+
+### `xcodebuild … build` — ❌ **could not run on this machine**
+
+```
+$ xcodebuild -project ShelfCase.xcodeproj -scheme ShelfCase \
+    -destination 'platform=iOS Simulator,name=iPhone 15' build
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer
+directory '/Library/Developer/CommandLineTools' is a command line tools instance
+```
+
+Same result for `-destination 'generic/platform=iOS'`. Xcode is not installed, so
+**no iOS build, no simulator run and no screenshots were produced here.** The
+screenshot shot-list is in `docs/screenshots/README.md`; CI
+(`.github/workflows/ci.yml`, `macos-14`) performs the real build.
+
+### `scripts/ios-parse-check.sh` — ✅ ran (the strongest check available here)
+
+Command Line Tools ship neither the iOS SDK nor `SwiftDataMacros`, so the app
+cannot be type-checked locally. `swiftc -parse` needs no macro plugins, and it
+does catch syntax errors across every source file:
+
+```
+$ ./scripts/ios-parse-check.sh
+==> swift-frontend -parse over 14 app source file(s)
+==> SDK: /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+
+✔ all 14 app source file(s) parse cleanly
+```
+
+For reference, type-checking stops immediately at the first SwiftData macro:
+
+```
+error: external macro implementation type 'SwiftDataMacros.PersistentModelMacro'
+could not be found for macro 'Model()'; plugin for module 'SwiftDataMacros' not found
+```
+
+| Target | Status on this machine |
+|--------|------------------------|
+| `ShelfCaseKit` (`swift build` / `swift test`) | ✅ builds and tests |
+| `ShelfCaseSyncSoak` (release) | ✅ builds and runs |
+| `ShelfCase.xcodeproj` generation | ✅ `xcodegen generate` |
+| iOS app source syntax | ✅ 14/14 files parse |
+| iOS app build / simulator run / screenshots | ❌ requires Xcode |
+| `ShelfCaseTests` (XCTest) | ❌ requires Xcode |
+
+### App sources written
+
+| File | Purpose |
+|------|---------|
+| `ShelfCaseApp.swift` | `@main` App, SwiftData `ModelContainer`, tab root, offline banner, `DiagnosticsView` |
+| `App/AppEnvironment.swift` | DI container; `NetworkMonitor` built on `NWPathMonitor`; `syncNow()` |
+| `App/AppConfiguration.swift` | base URL / token resolution, `APIClientFactory` |
+| `Persistence/SwiftDataModels.swift` | `@Model` entities mirroring the Kit models + the conflict archive |
+| `Persistence/SwiftDataLocalStore.swift` | `SwiftDataLocalStore: LocalStore` (an actor) |
+| `Persistence/LocalImageStore.swift` | container-relative image writes with a low-disk guard |
+| `Views/CollectionGridView.swift` | lazy grid, search, category/grade filters, pull-to-refresh |
+| `Views/ItemDetailView.swift` | photo, editable grade/notes, sparkline, wishlist + trade actions |
+| `Views/CaptureView.swift` | `AVCaptureSession` (device) with a `PhotosPicker` fallback (Simulator) |
+| `Views/PortfolioView.swift` | `Valuation.portfolioSummary` totals + per-category bars |
+| `Views/TradesView.swift` | incoming/outgoing, propose sheet, optimistic accept/decline with rollback |
+| `Notifications/PushRegistrar.swift` | `UNUserNotificationCenter` registration + local notifications |
+| `Instrumentation/Telemetry.swift` | OSLog signposts, rotating JSONL, optional `POST /telemetry` |
+| `Networking/TradeService.swift` | `/trades` and `/wishlist` client |
+
+APNs payload shapes are documented in `docs/APNS.md`.
