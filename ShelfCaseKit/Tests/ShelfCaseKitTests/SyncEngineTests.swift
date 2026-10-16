@@ -173,7 +173,7 @@ struct SyncEngineTests {
             .filter { $0.method == "POST" && $0.path == "/items" }
             .compactMap { request -> String? in
                 guard let body = request.body,
-                      let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+                    let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
                 else { return nil }
                 return object["title"] as? String
             }
@@ -367,7 +367,8 @@ struct SyncEngineTests {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         for index in 0..<count {
             try await stack.store.upsert(
-                SyncFixtures.item(title: "Batch \(index)", value: 1_000 + index, updatedAt: base.addingTimeInterval(Double(index)))
+                SyncFixtures.item(
+                    title: "Batch \(index)", value: 1_000 + index, updatedAt: base.addingTimeInterval(Double(index)))
             )
         }
         #expect(await stack.store.pendingCount() == count)
@@ -654,7 +655,8 @@ struct URLSessionAPIClientTests {
 
     @Test("backoff grows exponentially and is capped")
     func backoffShape() {
-        let policy = RetryPolicy(maxAttempts: 8, baseDelay: .milliseconds(100), maxDelay: .milliseconds(800), jitterRatio: 0)
+        let policy = RetryPolicy(
+            maxAttempts: 8, baseDelay: .milliseconds(100), maxDelay: .milliseconds(800), jitterRatio: 0)
         var generator = SeededGenerator(seed: 1)
         #expect(policy.delay(forAttempt: 1, using: &generator) == .milliseconds(100))
         #expect(policy.delay(forAttempt: 2, using: &generator) == .milliseconds(200))
@@ -665,7 +667,8 @@ struct URLSessionAPIClientTests {
 
     @Test("jitter keeps the delay inside the expected band")
     func backoffJitterBand() {
-        let policy = RetryPolicy(maxAttempts: 8, baseDelay: .milliseconds(1000), maxDelay: .seconds(1), jitterRatio: 0.5)
+        let policy = RetryPolicy(
+            maxAttempts: 8, baseDelay: .milliseconds(1000), maxDelay: .seconds(1), jitterRatio: 0.5)
         var generator = SeededGenerator(seed: 42)
         for _ in 0..<200 {
             let delay = policy.delay(forAttempt: 1, using: &generator)

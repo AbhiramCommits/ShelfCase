@@ -45,27 +45,27 @@ struct Options {
     }
 
     static let usage = """
-    ShelfCaseSyncSoak — reproducible offline-first sync harness
+        ShelfCaseSyncSoak — reproducible offline-first sync harness
 
-    USAGE:
-      ShelfCaseSyncSoak --scenario <soak|duplicates|tombstones> [options]
+        USAGE:
+          ShelfCaseSyncSoak --scenario <soak|duplicates|tombstones> [options]
 
-    OPTIONS:
-      --cycles N              soak cycles (default 200)
-      --runs N                repetitions for duplicates/tombstones (default 100)
-      --seed S                master seed; each run is offset by its index (default 20261016)
-      --create-semantics X    reject | replay   (server-side POST /items behaviour)
-      --trace                 print the instrumented trace (real log lines)
-      --verbose               print per-cycle narration
+        OPTIONS:
+          --cycles N              soak cycles (default 200)
+          --runs N                repetitions for duplicates/tombstones (default 100)
+          --seed S                master seed; each run is offset by its index (default 20261016)
+          --create-semantics X    reject | replay   (server-side POST /items behaviour)
+          --trace                 print the instrumented trace (real log lines)
+          --verbose               print per-cycle narration
 
-    SCENARIOS:
-      duplicates   "one offline create, reply lost, app retried later".
-                   Reports runs that ended with more server rows than local rows.
-      tombstones   "row deleted on another device, client comes back online".
-                   Reports deletes that never reached the client.
-      soak         Randomised offline/online cycles against the real sync engine,
-                   then a drain, then divergence + sync latency percentiles.
-    """
+        SCENARIOS:
+          duplicates   "one offline create, reply lost, app retried later".
+                       Reports runs that ended with more server rows than local rows.
+          tombstones   "row deleted on another device, client comes back online".
+                       Reports deletes that never reached the client.
+          soak         Randomised offline/online cycles against the real sync engine,
+                       then a drain, then divergence + sync latency percentiles.
+        """
 }
 
 // MARK: - Deterministic RNG
@@ -216,18 +216,18 @@ func scenarioDuplicates(options: Options) async -> String {
 
     let expected = options.runs - lostRuns
     return """
-    scenario: duplicates
-    runs: \(options.runs)  (each creates exactly ONE card while offline)
-    link: dropResponseRate=0.60 timeoutRate=0.10 serverErrorRate=0.05, maxAttempts=2 (seed \(options.seed), per-run offset)
-    server create semantics: \(options.createSemantics.rawValue)
-    dropped responses injected: \(totalDrops)
-    duplicate-id rejections (HTTP 500): \(totalRejections)
-    runs where the create was never confirmed: \(lostRuns)
-    runs ending with MORE THAN ONE server row: \(runsWithExtraServerRows) / \(options.runs)  [\(percent(runsWithExtraServerRows, options.runs))]
-    runs ending with MORE THAN ONE local row:  \(runsWithExtraLocalRows) / \(options.runs)  [\(percent(runsWithExtraLocalRows, options.runs))]
-    server rows: \(totalServerRows)   local rows: \(totalLocalRows)   (both should be \(expected))
-    \(worstRun.isEmpty ? "" : "first duplicate: \(worstRun)")
-    """
+        scenario: duplicates
+        runs: \(options.runs)  (each creates exactly ONE card while offline)
+        link: dropResponseRate=0.60 timeoutRate=0.10 serverErrorRate=0.05, maxAttempts=2 (seed \(options.seed), per-run offset)
+        server create semantics: \(options.createSemantics.rawValue)
+        dropped responses injected: \(totalDrops)
+        duplicate-id rejections (HTTP 500): \(totalRejections)
+        runs where the create was never confirmed: \(lostRuns)
+        runs ending with MORE THAN ONE server row: \(runsWithExtraServerRows) / \(options.runs)  [\(percent(runsWithExtraServerRows, options.runs))]
+        runs ending with MORE THAN ONE local row:  \(runsWithExtraLocalRows) / \(options.runs)  [\(percent(runsWithExtraLocalRows, options.runs))]
+        server rows: \(totalServerRows)   local rows: \(totalLocalRows)   (both should be \(expected))
+        \(worstRun.isEmpty ? "" : "first duplicate: \(worstRun)")
+        """
 }
 
 // MARK: - Scenario B: tombstones lost on the delta pull
@@ -279,13 +279,13 @@ func scenarioTombstones(options: Options) async -> String {
     }
 
     return """
-    scenario: tombstones
-    runs: \(options.runs), \(perRun) local items each (half deleted server-side)
-    deletes performed on the server: \(totalDeletes)
-    deletes that never reached the client: \(lostDeletes)  [\(percent(lostDeletes, totalDeletes))]
-    runs affected: \(runsWithLoss) / \(options.runs)
-    rows still believed live locally (resurrection risk): \(totalResurrected)
-    """
+        scenario: tombstones
+        runs: \(options.runs), \(perRun) local items each (half deleted server-side)
+        deletes performed on the server: \(totalDeletes)
+        deletes that never reached the client: \(lostDeletes)  [\(percent(lostDeletes, totalDeletes))]
+        runs affected: \(runsWithLoss) / \(options.runs)
+        rows still believed live locally (resurrection risk): \(totalResurrected)
+        """
 }
 
 // MARK: - Scenario C: randomised offline/online soak
@@ -339,7 +339,8 @@ func scenarioSoak(options: Options) async -> String {
             // before the next sync, so the push arrives with a stale base version
             // and the engine has to resolve a conflict.
             if !known.isEmpty, let id = known.randomElement(using: &random),
-               await stack.server.item(id: id) != nil {
+                await stack.server.item(id: id) != nil
+            {
                 _ = await stack.server.remoteUpdate(id: id, notes: "remote edit in cycle \(cycle)")
                 remoteEdits += 1
 
@@ -357,7 +358,8 @@ func scenarioSoak(options: Options) async -> String {
             if !known.isEmpty, let id = known.randomElement(using: &random) {
                 if var existing = try? await stack.store.item(id: id) {
                     existing.notes = "edited in cycle \(cycle)"
-                    existing.conditionGrade = [ConditionGrade.mint, .good, .excellent, .poor].randomElement(using: &random)!
+                    existing.conditionGrade = [ConditionGrade.mint, .good, .excellent, .poor].randomElement(
+                        using: &random)!
                     existing.updatedAt = Date()
                     existing.syncState = .pendingUpdate
                     try? await stack.store.upsert(existing)
@@ -448,21 +450,21 @@ func scenarioSoak(options: Options) async -> String {
     let p95 = percentile(durations, 0.95)
 
     return """
-    scenario: soak
-    cycles: \(options.cycles) (seed \(options.seed)); flaky/offline cycles: \(offlineCycles)
-    mutations: \(localCreates) local creates, \(localEdits) local edits, \(concurrentEdits) concurrent edits, \(localDeletes) local deletes, \(remoteEdits) remote edits, \(remoteDeletes) remote deletes
-    drain passes: \(drainPasses)
-    pushed: \(totalPushed)  pulled: \(totalPulled)  tombstones: \(totalTombstones)  conflicts: \(totalConflicts)  retries: \(totalRetries)  errors: \(totalErrors)
-    conflict archive entries: \(conflicts.count)
-    injected: \(metrics.droppedResponsesInjected) dropped responses, \(metrics.timeoutsInjected) timeouts, \(metrics.serverErrorsInjected) 5xx
-    sync duration p50: \(p50) ms   p95: \(p95) ms   (n=\(durations.count))
-    live items   — local: \(localLive)   server: \(serverLive)
-    total rows   — local: \(localTotal)  server: \(serverTotal)
-    local checksum:  \(localChecksum)
-    server checksum: \(serverChecksum)
-    ghost rows (deleted on the server, still live locally): \(ghostRows)
-    divergence: live items \(serverLive - localLive >= 0 ? "+" : "")\(serverLive - localLive) (server − local), checksum \(localChecksum == serverChecksum ? "MATCH" : "MISMATCH")
-    """
+        scenario: soak
+        cycles: \(options.cycles) (seed \(options.seed)); flaky/offline cycles: \(offlineCycles)
+        mutations: \(localCreates) local creates, \(localEdits) local edits, \(concurrentEdits) concurrent edits, \(localDeletes) local deletes, \(remoteEdits) remote edits, \(remoteDeletes) remote deletes
+        drain passes: \(drainPasses)
+        pushed: \(totalPushed)  pulled: \(totalPulled)  tombstones: \(totalTombstones)  conflicts: \(totalConflicts)  retries: \(totalRetries)  errors: \(totalErrors)
+        conflict archive entries: \(conflicts.count)
+        injected: \(metrics.droppedResponsesInjected) dropped responses, \(metrics.timeoutsInjected) timeouts, \(metrics.serverErrorsInjected) 5xx
+        sync duration p50: \(p50) ms   p95: \(p95) ms   (n=\(durations.count))
+        live items   — local: \(localLive)   server: \(serverLive)
+        total rows   — local: \(localTotal)  server: \(serverTotal)
+        local checksum:  \(localChecksum)
+        server checksum: \(serverChecksum)
+        ghost rows (deleted on the server, still live locally): \(ghostRows)
+        divergence: live items \(serverLive - localLive >= 0 ? "+" : "")\(serverLive - localLive) (server − local), checksum \(localChecksum == serverChecksum ? "MATCH" : "MISMATCH")
+        """
 }
 
 // MARK: - Helpers
@@ -485,9 +487,11 @@ let options = Options.parse(Array(CommandLine.arguments.dropFirst()))
 /// When `--trace` is passed, every `TraceEvent` from the engine and the API
 /// client is printed as a real log line with a timestamp, a request id and a
 /// retry count. This is the exact output quoted in docs/DEBUGGING.md.
-let globalTrace: TraceSink? = options.trace ? TraceSink { event in
-    print(event.consoleLine)
-} : nil
+let globalTrace: TraceSink? =
+    options.trace
+    ? TraceSink { event in
+        print(event.consoleLine)
+    } : nil
 
 print("ShelfCaseSyncSoak — engine: ShelfCaseKit SyncEngine, transport: URLSessionAPIClient")
 print("")

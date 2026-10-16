@@ -42,7 +42,8 @@ public struct TraceEvent: Sendable, Equatable {
         ]
         for (key, value) in fields { payload[key] = value }
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-              let text = String(data: data, encoding: .utf8) else {
+            let text = String(data: data, encoding: .utf8)
+        else {
             return "{\"event\":\"\(event)\"}"
         }
         return text
@@ -52,7 +53,8 @@ public struct TraceEvent: Sendable, Equatable {
     public var consoleLine: String {
         let stamp = ISO8601DateFormatter.shelfCaseWithFractional.string(from: timestamp)
         let rendered = fields.keys.sorted().map { "\($0)=\(fields[$0] ?? "")" }.joined(separator: " ")
-        return "\(stamp) \(level.rawValue.uppercased().padding(toLength: 5, withPad: " ", startingAt: 0)) [\(requestId)] \(event)\(rendered.isEmpty ? "" : " " + rendered)"
+        return
+            "\(stamp) \(level.rawValue.uppercased().padding(toLength: 5, withPad: " ", startingAt: 0)) [\(requestId)] \(event)\(rendered.isEmpty ? "" : " " + rendered)"
     }
 }
 

@@ -54,7 +54,8 @@ public enum Valuation {
         for item: CollectibleItem,
         observations: [PriceObservation]
     ) -> ItemValuation? {
-        let matching = observations
+        let matching =
+            observations
             .filter { $0.itemId == item.id }
             .sorted { $0.observedAt > $1.observedAt }
 

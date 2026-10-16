@@ -54,7 +54,7 @@ enum LocalImageStore {
         guard let data = encode(image, quality: quality) else {
             throw StoreError.encodingFailed
         }
-        let required = data.count + 8 * 1_024 * 1_024 // data + headroom
+        let required = data.count + 8 * 1_024 * 1_024  // data + headroom
         let available = availableCapacityBytes()
         if available > 0, available < required {
             throw StoreError.insufficientSpace(requiredBytes: required, availableBytes: available)
@@ -80,12 +80,13 @@ enum LocalImageStore {
     }
 
     static func absoluteURL(for relativePath: String) -> URL {
-        let base = (try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )) ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let base =
+            (try? FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )) ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base.appendingPathComponent(relativePath)
     }
 
@@ -106,7 +107,8 @@ enum LocalImageStore {
         return image.jpegData(compressionQuality: quality)
         #elseif canImport(AppKit)
         guard let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff) else { return nil }
+            let rep = NSBitmapImageRep(data: tiff)
+        else { return nil }
         return rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
         #else
         return nil

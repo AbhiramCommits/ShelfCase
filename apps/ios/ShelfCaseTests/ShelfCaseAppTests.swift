@@ -40,11 +40,12 @@ final class SwiftDataLocalStoreTests: XCTestCase {
         let (store, _) = try makeStore()
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         for (index, offset) in [30.0, 10.0, 20.0].enumerated() {
-            try await store.upsert(CollectibleItem(
-                title: "Item \(index)",
-                updatedAt: base.addingTimeInterval(offset),
-                syncState: .pendingCreate
-            ))
+            try await store.upsert(
+                CollectibleItem(
+                    title: "Item \(index)",
+                    updatedAt: base.addingTimeInterval(offset),
+                    syncState: .pendingCreate
+                ))
         }
 
         let pending = try await store.fetchPending()
@@ -85,13 +86,14 @@ final class SwiftDataLocalStoreTests: XCTestCase {
         var merged = server
         merged.notes = local.notes
 
-        try await store.recordConflict(ConflictRecord(
-            itemId: itemId,
-            local: local,
-            server: server,
-            merged: merged,
-            policy: "client-newer:user-authored-fields"
-        ))
+        try await store.recordConflict(
+            ConflictRecord(
+                itemId: itemId,
+                local: local,
+                server: server,
+                merged: merged,
+                policy: "client-newer:user-authored-fields"
+            ))
 
         let archive = try await store.conflictArchive()
         XCTAssertEqual(archive.count, 1)
@@ -106,12 +108,13 @@ final class SwiftDataLocalStoreTests: XCTestCase {
         try await store.upsert(item)
 
         for (label, offset) in [("eBay", 0.0), ("TCGPlayer", 3600.0)] {
-            try await store.upsertObservation(PriceObservation(
-                itemId: item.id,
-                sourceLabel: label,
-                valueCents: 1_000,
-                observedAt: Date(timeIntervalSince1970: 1_700_000_000 + offset)
-            ))
+            try await store.upsertObservation(
+                PriceObservation(
+                    itemId: item.id,
+                    sourceLabel: label,
+                    valueCents: 1_000,
+                    observedAt: Date(timeIntervalSince1970: 1_700_000_000 + offset)
+                ))
         }
 
         let observations = try await store.observations(forItem: item.id)

@@ -16,8 +16,9 @@ public enum ShelfCaseCoding {
     public static let iso8601Decoding: JSONDecoder.DateDecodingStrategy = .custom { decoder in
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
-        guard let date = ISO8601DateFormatter.shelfCaseWithFractional.date(from: raw)
-            ?? ISO8601DateFormatter.shelfCase.date(from: raw)
+        guard
+            let date = ISO8601DateFormatter.shelfCaseWithFractional.date(from: raw)
+                ?? ISO8601DateFormatter.shelfCase.date(from: raw)
         else {
             throw DecodingError.dataCorruptedError(
                 in: container,

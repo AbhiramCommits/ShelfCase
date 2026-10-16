@@ -88,6 +88,24 @@ const SOURCES = ["eBay", "TCGPlayer", "Discogs", "Heritage Auctions", "CardMarke
 async function main(): Promise<void> {
   await migrate();
 
+  // The seeder is explicitly a *demo* dataset. Clear the demo tables first so the
+  // printed row counts are the same on every run — otherwise leftovers from a
+  // manual `curl` or the repro harness make the numbers drift.
+  const isProduction = (process.env.NODE_ENV ?? "development") === "production";
+  const forced = process.argv.includes("--force");
+
+  if (isProduction && !forced) {
+    console.error(
+      "refusing to reseed with NODE_ENV=production (this truncates demo tables). Re-run with --force if you are sure.",
+    );
+    process.exit(1);
+  }
+
+  await pool.query(
+    `TRUNCATE trade_items, trades, price_observations, wishlist_entries, items, request_log RESTART IDENTITY CASCADE`,
+  );
+  console.log("cleared existing demo data");
+
   // ------------------------------------------------------------- users ---
   await pool.query(
     `INSERT INTO users (id, display_name, email) VALUES

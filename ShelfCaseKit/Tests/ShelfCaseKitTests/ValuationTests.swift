@@ -80,19 +80,21 @@ struct ValuationTests {
         let item = CollectibleItem(id: itemId, title: "Sol Ring", conditionGrade: .nearMint)
         let valuation = try #require(Valuation.estimatedValue(for: item, observations: observations))
 
-        #expect(valuation.rawMedianCents == 300)   // median of 100...500
+        #expect(valuation.rawMedianCents == 300)  // median of 100...500
         #expect(valuation.sampleCount == 5)
-        #expect(valuation.adjustedCents == 300)    // nearMint multiplier is 1.0
+        #expect(valuation.adjustedCents == 300)  // nearMint multiplier is 1.0
         #expect(valuation.usedObservations.count == 5)
     }
 
-    @Test("grade multipliers scale the raw median", arguments: [
-        (ConditionGrade.mint, 12_500),
-        (ConditionGrade.nearMint, 10_000),
-        (ConditionGrade.excellent, 8_500),
-        (ConditionGrade.good, 6_500),
-        (ConditionGrade.poor, 4_000),
-    ])
+    @Test(
+        "grade multipliers scale the raw median",
+        arguments: [
+            (ConditionGrade.mint, 12_500),
+            (ConditionGrade.nearMint, 10_000),
+            (ConditionGrade.excellent, 8_500),
+            (ConditionGrade.good, 6_500),
+            (ConditionGrade.poor, 4_000),
+        ])
     func estimatedValueAppliesGradeMultipliers(grade: ConditionGrade, expectedCents: Int) throws {
         let itemId = UUID()
         let observations = [PriceObservation(itemId: itemId, sourceLabel: "eBay", valueCents: 10_000)]
@@ -184,7 +186,7 @@ struct ValuationTests {
         ]
 
         let summary = Valuation.portfolioSummary(items: items)
-        #expect(summary.byCategory.count == 3)   // empty categories are omitted
+        #expect(summary.byCategory.count == 3)  // empty categories are omitted
 
         let cards = try #require(summary.byCategory.first { $0.category == .card })
         #expect(cards.itemCount == 2)

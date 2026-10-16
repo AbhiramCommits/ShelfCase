@@ -101,7 +101,8 @@ public actor FaultInjectingAPIClient: HTTPPerforming {
         currentMetrics.attempts += 1
 
         // 1. Latency.
-        let latency = nextUnit() * (profile.latencyRange.upperBound - profile.latencyRange.lowerBound)
+        let latency =
+            nextUnit() * (profile.latencyRange.upperBound - profile.latencyRange.lowerBound)
             + profile.latencyRange.lowerBound
         if latency > 0 {
             currentMetrics.injectedLatencySeconds += latency

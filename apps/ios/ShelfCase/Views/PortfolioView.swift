@@ -24,7 +24,8 @@ struct PortfolioView: View {
 
                         HStack(spacing: 16) {
                             metric("Cost", CurrencyFormat.string(cents: summary.totalCostCents))
-                            metric("Unrealised", CurrencyFormat.string(cents: summary.unrealizedGainCents), tint: gainTint)
+                            metric(
+                                "Unrealised", CurrencyFormat.string(cents: summary.unrealizedGainCents), tint: gainTint)
                             if let percent = summary.unrealizedGainPercent {
                                 metric("Return", String(format: "%+.1f%%", percent), tint: gainTint)
                             }
@@ -43,8 +44,9 @@ struct PortfolioView: View {
                         Text("Nothing catalogued yet.").foregroundStyle(.secondary)
                     }
                     ForEach(summary.byCategory, id: \.category) { breakdown in
-                        CategoryRow(breakdown: breakdown,
-                                    maximum: max(1, summary.totalEstimatedValueCents))
+                        CategoryRow(
+                            breakdown: breakdown,
+                            maximum: max(1, summary.totalEstimatedValueCents))
                     }
                 }
             }

@@ -74,7 +74,9 @@ public actor SimulatedServer {
     /// `InMemoryLocalStore.checksum()`'s field selection.
     public func checksum() -> String {
         let material = rows.values
-            .map { "\($0.item.id.uuidString)|\($0.item.title)|\($0.item.conditionGrade.rawValue)|\($0.item.estimatedValueCents)|\($0.item.isDeleted)" }
+            .map {
+                "\($0.item.id.uuidString)|\($0.item.title)|\($0.item.conditionGrade.rawValue)|\($0.item.estimatedValueCents)|\($0.item.isDeleted)"
+            }
             .sorted()
             .joined(separator: "\n")
         return ShelfCaseDigest.hex(material)
@@ -119,7 +121,8 @@ public actor SimulatedServer {
 
         let decoder = ShelfCaseCoding.makeDecoder()
         guard let body = request.body,
-              let payload = try? decoder.decode(CreatePayload.self, from: body) else {
+            let payload = try? decoder.decode(CreatePayload.self, from: body)
+        else {
             return json(422, ["error": ["code": "VALIDATION_ERROR", "message": "Bad create body"]])
         }
 
@@ -127,12 +130,14 @@ public actor SimulatedServer {
             switch options.createSemantics {
             case .rejectDuplicateId:
                 duplicateIdRejections += 1
-                let response = json(500, [
-                    "error": [
-                        "code": "INTERNAL_ERROR",
-                        "message": "duplicate key value violates unique constraint \"items_pkey\"",
-                    ],
-                ])
+                let response = json(
+                    500,
+                    [
+                        "error": [
+                            "code": "INTERNAL_ERROR",
+                            "message": "duplicate key value violates unique constraint \"items_pkey\"",
+                        ]
+                    ])
                 store(key: request.headers["Idempotency-Key"], response: response)
                 return response
             case .replayExistingRow:
@@ -290,11 +295,12 @@ public actor SimulatedServer {
     }
 
     private func conflictResponse(serverItem: CollectibleItem, message: String) -> HTTPResponse {
-        let body = ConflictBody(error: .init(
-            code: "VERSION_CONFLICT",
-            message: message,
-            details: .init(serverItem: serverItem)
-        ))
+        let body = ConflictBody(
+            error: .init(
+                code: "VERSION_CONFLICT",
+                message: message,
+                details: .init(serverItem: serverItem)
+            ))
         return json(409, body)
     }
 

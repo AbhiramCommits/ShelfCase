@@ -234,7 +234,9 @@ public actor InMemoryLocalStore: LocalStore {
     /// harness to compare client and server.
     public func checksum() -> String {
         let material = items.values
-            .map { "\($0.id.uuidString)|\($0.title)|\($0.conditionGrade.rawValue)|\($0.estimatedValueCents)|\($0.isDeleted)" }
+            .map {
+                "\($0.id.uuidString)|\($0.title)|\($0.conditionGrade.rawValue)|\($0.estimatedValueCents)|\($0.isDeleted)"
+            }
             .sorted()
             .joined(separator: "\n")
         return ShelfCaseDigest.hex(material)

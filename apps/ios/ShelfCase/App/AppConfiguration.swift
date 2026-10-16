@@ -10,11 +10,13 @@ public enum AppConfiguration {
 
     public static var baseURL: URL {
         if let raw = UserDefaults.standard.string(forKey: Keys.baseURL),
-           let url = URL(string: raw) {
+            let url = URL(string: raw)
+        {
             return url
         }
         if let raw = Bundle.main.object(forInfoDictionaryKey: "ShelfCaseAPIBaseURL") as? String,
-           let url = URL(string: raw) {
+            let url = URL(string: raw)
+        {
             return url
         }
         return fallbackBaseURL

@@ -63,9 +63,10 @@ struct CollectionGridView: View {
                     ContentUnavailableView(
                         searchText.isEmpty ? "No items yet" : "No matches",
                         systemImage: searchText.isEmpty ? "shippingbox" : "magnifyingglass",
-                        description: Text(searchText.isEmpty
-                            ? "Tap the camera to catalogue your first collectible."
-                            : "Try a different title, category or grade.")
+                        description: Text(
+                            searchText.isEmpty
+                                ? "Tap the camera to catalogue your first collectible."
+                                : "Try a different title, category or grade.")
                     )
                 }
             }
@@ -97,7 +98,10 @@ struct CollectionGridView: View {
                 }
             }
         } label: {
-            Label("Filter", systemImage: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            Label(
+                "Filter",
+                systemImage: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+            )
         }
     }
 

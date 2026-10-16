@@ -65,10 +65,13 @@ final class AppEnvironment: ObservableObject {
             // A corrupt store should not brick the app: fall back to memory and
             // record it, rather than crashing at launch.
             container = try! ShelfCaseSchema.makeContainer(inMemory: true)
-            Task { await Telemetry.shared.record(TelemetryEvent(
-                name: "store.open_failed",
-                errorMessage: error.localizedDescription
-            )) }
+            Task {
+                await Telemetry.shared.record(
+                    TelemetryEvent(
+                        name: "store.open_failed",
+                        errorMessage: error.localizedDescription
+                    ))
+            }
         }
 
         self.container = container
@@ -103,14 +106,15 @@ final class AppEnvironment: ObservableObject {
             retries: report.retries,
             conflicts: report.conflicts
         )
-        await Telemetry.shared.record(TelemetryEvent(
-            name: report.errors > 0 ? "sync.completed_with_errors" : "sync.completed",
-            syncDurationMs: report.durationMs,
-            retries: report.retries,
-            conflicts: report.conflicts,
-            pushed: report.pushed,
-            pulled: report.pulled
-        ))
+        await Telemetry.shared.record(
+            TelemetryEvent(
+                name: report.errors > 0 ? "sync.completed_with_errors" : "sync.completed",
+                syncDurationMs: report.durationMs,
+                retries: report.retries,
+                conflicts: report.conflicts,
+                pushed: report.pushed,
+                pulled: report.pulled
+            ))
 
         if report.errors > 0 {
             lastSyncError = "\(report.errors) change(s) could not be sent"

@@ -300,8 +300,8 @@ final class ConflictEntity {
     var asDomain: ConflictRecord? {
         let decoder = ShelfCaseCoding.makeDecoder()
         guard let local = try? decoder.decode(CollectibleItem.self, from: localJSON),
-              let server = try? decoder.decode(CollectibleItem.self, from: serverJSON),
-              let merged = try? decoder.decode(CollectibleItem.self, from: mergedJSON)
+            let server = try? decoder.decode(CollectibleItem.self, from: serverJSON),
+            let merged = try? decoder.decode(CollectibleItem.self, from: mergedJSON)
         else { return nil }
         return ConflictRecord(
             id: id,

@@ -133,7 +133,9 @@ struct DiagnosticsView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        Task { await environment.syncNow(); await reload() }
+                        Task {
+                            await environment.syncNow(); await reload()
+                        }
                     } label: {
                         if environment.isSyncing { ProgressView() } else { Image(systemName: "arrow.clockwise") }
                     }

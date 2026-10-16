@@ -139,9 +139,11 @@ public actor Telemetry {
     /// Most recent events, newest first — used by the in-app diagnostics screen.
     public func recentEvents(limit: Int = 200) -> [TelemetryEvent] {
         guard let data = try? Data(contentsOf: Self.logFileURL),
-              let text = String(data: data, encoding: .utf8) else { return [] }
+            let text = String(data: data, encoding: .utf8)
+        else { return [] }
         let decoder = ShelfCaseTelemetryCoding.decoder
-        return text
+        return
+            text
             .split(separator: "\n")
             .suffix(limit)
             .compactMap { line in
@@ -180,19 +182,21 @@ public actor Telemetry {
     private func rotateIfNeeded() {
         let url = Self.logFileURL
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? Int, size > Self.maxFileBytes else { return }
+            let size = attributes[.size] as? Int, size > Self.maxFileBytes
+        else { return }
         let rotated = url.deletingLastPathComponent().appendingPathComponent("telemetry.1.jsonl")
         try? FileManager.default.removeItem(at: rotated)
         try? FileManager.default.moveItem(at: url, to: rotated)
     }
 
     static var logFileURL: URL {
-        let base = (try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )) ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let base =
+            (try? FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )) ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base.appendingPathComponent("ShelfCase/telemetry.jsonl")
     }
 

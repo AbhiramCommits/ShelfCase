@@ -63,10 +63,11 @@ public final class PushRegistrar: NSObject, UNUserNotificationCenterDelegate, @u
         let hex = data.map { String(format: "%02x", $0) }.joined()
         deviceToken = hex
         Task {
-            await Telemetry.shared.record(TelemetryEvent(
-                name: "push.registered",
-                attributes: ["tokenPrefix": String(hex.prefix(8))]
-            ))
+            await Telemetry.shared.record(
+                TelemetryEvent(
+                    name: "push.registered",
+                    attributes: ["tokenPrefix": String(hex.prefix(8))]
+                ))
         }
     }
 
@@ -109,10 +110,11 @@ public final class PushRegistrar: NSObject, UNUserNotificationCenterDelegate, @u
         do {
             try await UNUserNotificationCenter.current().add(request)
         } catch {
-            await Telemetry.shared.record(TelemetryEvent(
-                name: "push.deliver_failed",
-                errorMessage: error.localizedDescription
-            ))
+            await Telemetry.shared.record(
+                TelemetryEvent(
+                    name: "push.deliver_failed",
+                    errorMessage: error.localizedDescription
+                ))
         }
     }
 
@@ -137,9 +139,10 @@ public final class PushRegistrar: NSObject, UNUserNotificationCenterDelegate, @u
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        await Telemetry.shared.record(TelemetryEvent(
-            name: "push.opened",
-            attributes: ["kind": (response.notification.request.content.userInfo["kind"] as? String) ?? "unknown"]
-        ))
+        await Telemetry.shared.record(
+            TelemetryEvent(
+                name: "push.opened",
+                attributes: ["kind": (response.notification.request.content.userInfo["kind"] as? String) ?? "unknown"]
+            ))
     }
 }

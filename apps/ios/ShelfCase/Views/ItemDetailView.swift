@@ -35,8 +35,11 @@ struct ItemDetailView: View {
             Section("Valuation") {
                 LabeledContent("Estimated", value: CurrencyFormat.string(cents: item.estimatedValueCents))
                 LabeledContent("Paid", value: CurrencyFormat.string(cents: item.purchasePriceCents))
-                LabeledContent("Unrealised", value: CurrencyFormat.string(cents: item.estimatedValueCents - item.purchasePriceCents))
-                    .foregroundStyle(item.estimatedValueCents >= item.purchasePriceCents ? .green : .red)
+                LabeledContent(
+                    "Unrealised",
+                    value: CurrencyFormat.string(cents: item.estimatedValueCents - item.purchasePriceCents)
+                )
+                .foregroundStyle(item.estimatedValueCents >= item.purchasePriceCents ? .green : .red)
 
                 if observations.count >= 2 {
                     VStack(alignment: .leading, spacing: 6) {
@@ -111,14 +114,18 @@ struct ItemDetailView: View {
     private var categoryBinding: Binding<ItemCategory> {
         Binding(
             get: { item.category },
-            set: { item.categoryRaw = $0.rawValue; markDirty() }
+            set: {
+                item.categoryRaw = $0.rawValue; markDirty()
+            }
         )
     }
 
     private var gradeBinding: Binding<ConditionGrade> {
         Binding(
             get: { item.conditionGrade },
-            set: { item.conditionGradeRaw = $0.rawValue; markDirty() }
+            set: {
+                item.conditionGradeRaw = $0.rawValue; markDirty()
+            }
         )
     }
 
@@ -244,8 +251,9 @@ struct ProposeTradeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
-    @Query(filter: #Predicate<ItemEntity> { $0.isDeleted == false },
-           sort: [SortDescriptor(\ItemEntity.title)])
+    @Query(
+        filter: #Predicate<ItemEntity> { $0.isDeleted == false },
+        sort: [SortDescriptor(\ItemEntity.title)])
     private var items: [ItemEntity]
 
     @State var preselectedOffered: UUID?
@@ -344,10 +352,11 @@ struct ProposeTradeSheet: View {
             modelContext.delete(entity)
             try? modelContext.save()
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            await Telemetry.shared.record(TelemetryEvent(
-                name: "trade.propose_failed",
-                errorMessage: error.localizedDescription
-            ))
+            await Telemetry.shared.record(
+                TelemetryEvent(
+                    name: "trade.propose_failed",
+                    errorMessage: error.localizedDescription
+                ))
         }
     }
 }

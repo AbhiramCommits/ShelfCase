@@ -409,7 +409,8 @@ public final class SyncEngine: @unchecked Sendable {
 
             // The cursor only ever moves forward.
             if let current = since, let currentSeq = Self.sequence(of: current),
-               let nextSeq = Self.sequence(of: response.nextCursor), nextSeq <= currentSeq {
+                let nextSeq = Self.sequence(of: response.nextCursor), nextSeq <= currentSeq
+            {
                 break
             }
 

@@ -127,8 +127,9 @@ struct CaptureView: View {
                 showingCamera = true
             }
         } label: {
-            Label(CameraPicker.isAvailable ? "Take photo" : "Camera unavailable in Simulator",
-                  systemImage: "camera.fill")
+            Label(
+                CameraPicker.isAvailable ? "Take photo" : "Camera unavailable in Simulator",
+                systemImage: "camera.fill")
         }
         .disabled(!CameraPicker.isAvailable)
         #endif
@@ -177,10 +178,13 @@ struct CaptureView: View {
         } catch {
             imagePath = nil
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            Task { await Telemetry.shared.record(TelemetryEvent(
-                name: "capture.image_write_failed",
-                errorMessage: error.localizedDescription
-            )) }
+            Task {
+                await Telemetry.shared.record(
+                    TelemetryEvent(
+                        name: "capture.image_write_failed",
+                        errorMessage: error.localizedDescription
+                    ))
+            }
         }
     }
 
@@ -305,8 +309,9 @@ final class CameraViewController: UIViewController, AVCapturePhotoCaptureDelegat
 
     private func configureSession() {
         guard let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input), session.canAddOutput(output) else { return }
+            let input = try? AVCaptureDeviceInput(device: device),
+            session.canAddInput(input), session.canAddOutput(output)
+        else { return }
         session.beginConfiguration()
         session.sessionPreset = .photo
         session.addInput(input)

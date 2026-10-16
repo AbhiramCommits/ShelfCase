@@ -82,7 +82,8 @@ public struct RetryPolicy: Equatable, Sendable {
         let raw = baseDelay * Int(1 << min(exponent, 20))
         let capped = min(raw, maxDelay)
         guard jitterRatio > 0 else { return capped }
-        let milliseconds = Double(capped.components.seconds) * 1000
+        let milliseconds =
+            Double(capped.components.seconds) * 1000
             + Double(capped.components.attoseconds) / 1e15
         let spread = milliseconds * jitterRatio
         let jittered = milliseconds - spread / 2 + Double.random(in: 0...spread, using: &generator)

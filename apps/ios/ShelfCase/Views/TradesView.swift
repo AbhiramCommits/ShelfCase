@@ -49,7 +49,9 @@ struct TradesView: View {
             .navigationTitle("Trades")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { showingPropose = true } label: {
+                    Button {
+                        showingPropose = true
+                    } label: {
                         Label("Propose", systemImage: "plus")
                     }
                 }
@@ -94,28 +96,31 @@ struct TradesView: View {
         try? modelContext.save()
 
         do {
-            let updated = action == .accept
+            let updated =
+                action == .accept
                 ? try await environment.trades.accept(id: trade.id)
                 : try await environment.trades.decline(id: trade.id)
             trade.statusRaw = updated.status.rawValue
             trade.version = updated.version
             trade.updatedAt = updated.updatedAt
             try? modelContext.save()
-            await Telemetry.shared.record(TelemetryEvent(
-                name: "trade.\(action == .accept ? "accepted" : "declined")",
-                attributes: ["tradeId": trade.id.uuidString]
-            ))
+            await Telemetry.shared.record(
+                TelemetryEvent(
+                    name: "trade.\(action == .accept ? "accepted" : "declined")",
+                    attributes: ["tradeId": trade.id.uuidString]
+                ))
         } catch {
             trade.statusRaw = previousStatus.rawValue
             trade.version = previousVersion
             trade.updatedAt = Date()
             try? modelContext.save()
             rollbackMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            await Telemetry.shared.record(TelemetryEvent(
-                name: "trade.rollback",
-                errorMessage: error.localizedDescription,
-                attributes: ["tradeId": trade.id.uuidString, "action": action.rawValue]
-            ))
+            await Telemetry.shared.record(
+                TelemetryEvent(
+                    name: "trade.rollback",
+                    errorMessage: error.localizedDescription,
+                    attributes: ["tradeId": trade.id.uuidString, "action": action.rawValue]
+                ))
         }
     }
 }

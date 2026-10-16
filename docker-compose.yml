@@ -4,16 +4,18 @@ services:
     container_name: shelfcase-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: shelfcase
-      POSTGRES_PASSWORD: shelfcase
-      POSTGRES_DB: shelfcase
+      POSTGRES_USER: ${POSTGRES_USER:-shelfcase}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shelfcase}
+      POSTGRES_DB: ${POSTGRES_DB:-shelfcase}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      - "55432:5432"
+      # Published on 55432 rather than 5432 so a locally installed PostgreSQL
+      # on the host is left alone. Keep this in sync with server/.env.
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
       - shelfcase-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shelfcase -d shelfcase"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shelfcase} -d ${POSTGRES_DB:-shelfcase}"]
       interval: 2s
       timeout: 5s
       retries: 30
