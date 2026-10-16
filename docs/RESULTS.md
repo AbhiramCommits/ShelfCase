@@ -86,3 +86,140 @@ ShelfCase/
 ├── scripts/                swift-test.sh, ...
 └── docker-compose.yml      postgres:16 on port 55432
 ```
+
+---
+
+## Step 2 — TypeScript + Express + PostgreSQL API
+
+### Infrastructure
+
+`docker compose up -d` brought up `postgres:16` on host port **55432**:
+
+```
+$ docker exec shelfcase-postgres psql -U shelfcase -d shelfcase -c "select version();"
+PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19), 64-bit
+$ scripts/test-db.sh   # readiness probe
+READY after 1s
+```
+
+`npm run migrate` (idempotent `CREATE ... IF NOT EXISTS`):
+
+```
+{"ts":"2026-10-16T06:56:24.676Z","level":"info","event":"db.migrated","file":"001_init.sql"}
+{"ts":"2026-10-16T06:56:24.677Z","level":"info","event":"migrate.done"}
+```
+
+### `npm test` — Supertest against a real PostgreSQL
+
+`scripts/test-db.sh reset` drops and recreates `shelfcase_test` per run, then the
+suite migrates it. 75 tests across 5 files:
+
+```
+ ✓ test/items.test.ts (25 tests) 725ms
+ ✓ test/trades.test.ts (19 tests) 509ms
+ ✓ test/sync.test.ts (15 tests) 457ms
+ ✓ test/idempotency.test.ts (8 tests) 225ms
+ ✓ test/wishlist.test.ts (8 tests) 198ms
+
+ Test Files  5 passed (5)
+      Tests  75 passed (75)
+   Duration  3.60s (transform 111ms, setup 0ms, collect 409ms, tests 2.11s, prepare 135ms)
+```
+
+| Metric | Value |
+|--------|-------|
+| Test files | **5 passed / 5** |
+| Tests | **75 passed / 75**, 0 failed |
+| Duration (with coverage instrumentation) | **4.20 s** |
+| Duration (plain `npm test`) | **3.60 s** |
+
+### `npm run test:coverage` — v8 coverage
+
+```
+ Test Files  5 passed (5)
+      Tests  75 passed (75)
+   Duration  4.20s
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   90.51 |    81.67 |   82.69 |   90.51 |
+ src               |   88.69 |    80.35 |   72.41 |   88.69 |
+  app.ts           |   85.71 |       80 |     100 |   85.71 |
+  config.ts        |     100 |       50 |     100 |     100 |
+  cursor.ts        |   94.73 |     91.3 |     100 |   94.73 |
+  db.ts            |   57.44 |    66.66 |      20 |   57.44 |
+  errors.ts        |   93.33 |      100 |    87.5 |   93.33 |
+  logger.ts        |   54.54 |       50 |      40 |   54.54 |
+  mappers.ts       |     100 |     62.5 |     100 |     100 |
+  schemas.ts       |     100 |      100 |     100 |     100 |
+ src/middleware    |   84.79 |    77.08 |    87.5 |   84.79 |
+  auth.ts          |     100 |      100 |     100 |     100 |
+  error.ts         |     100 |       80 |     100 |     100 |
+  idempotency.ts   |   72.34 |     62.5 |      75 |   72.34 |
+  requestContext.ts|     100 |      100 |     100 |     100 |
+ src/routes        |    92.3 |    84.74 |     100 |    92.3 |
+  items.ts         |   97.08 |    82.22 |     100 |   97.08 |
+  sync.ts          |   83.79 |       80 |     100 |   83.79 |
+  trades.ts        |   95.85 |    90.14 |     100 |   95.85 |
+  wishlist.ts      |   93.58 |    81.25 |     100 |   93.58 |
+ src/services      |   94.53 |     75.6 |     100 |   94.53 |
+  items.ts         |   96.05 |    77.14 |     100 |   96.05 |
+  telemetry.ts     |   88.23 |       50 |     100 |   88.23 |
+  wishlist.ts      |     100 |      100 |     100 |     100 |
+-------------------|---------|----------|---------|---------|-------------------
+```
+
+| Scope | Lines | Branch |
+|-------|-------|--------|
+| **All files** | **90.51 %** | 81.67 % |
+| `src/routes` | **92.30 %** | 84.74 % |
+| `src/middleware` | **84.79 %** | 77.08 % |
+| `src/services` | 94.53 % | 75.60 % |
+
+(Step 6 target was ≥ 80 % lines on `src/routes` and `src/middleware`; both are
+already above it.)
+
+### `npm run lint` / `npx tsc --noEmit`
+
+```
+$ npm run lint            → 0 errors, 0 warnings
+$ npx tsc --noEmit        → (no output)
+```
+
+### `npm run seed` — deterministic demo dataset
+
+Seeded from `SEED = 0x5eed1234` with fixed row ids, so repeated runs converge.
+
+```
+seeded row counts:
+  users                3
+  items                48
+  price_observations   215
+  trades               5
+  trade_items          11
+  wishlist_entries     6
+```
+
+| Table | Rows |
+|-------|------|
+| users | 3 |
+| **items** | **48** (brief required ≥ 40) |
+| **price_observations** | **215** (brief required ≥ 150) |
+| **trades** | **5** |
+| trade_items | 11 |
+| wishlist_entries | 6 |
+
+### Defects found and fixed during Step 2
+
+1. **`GET /sync/pull` returned 500 for every un-cursored request.** The generated
+   SQL always referenced `LIMIT $2`, but the no-cursor branch bound only one
+   parameter, so PostgreSQL rejected it with "there is no parameter $2". Fixed by
+   binding the limit as the last parameter of whichever branch was built and
+   interpolating that index. Caught by `test/sync.test.ts` (5 failures) and then
+   verified green.
+2. **Failed requests were cached by the idempotency middleware.** The middleware
+   patched `res.json`, and the error handler writes through `res.json` too — so a
+   `422` was stored as the canonical response for that key and the client could
+   never retry with a corrected body. Fixed by only storing responses with status
+   `< 400` and deleting the claim otherwise (`test/idempotency.test.ts →
+   "errors are not cached"`).

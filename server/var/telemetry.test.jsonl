@@ -1,0 +1,6 @@
+{"name":"sync.completed","durationMs":412,"retries":2,"conflicts":1}
+{"name":"sync.error","errorMessage":"transport: connection reset"}
+{"name":"sync.completed","durationMs":412,"retries":2,"conflicts":1}
+{"name":"sync.error","errorMessage":"transport: connection reset"}
+{"name":"sync.completed","durationMs":412,"retries":2,"conflicts":1}
+{"name":"sync.error","errorMessage":"transport: connection reset"}
