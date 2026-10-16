@@ -223,3 +223,109 @@ seeded row counts:
    never retry with a corrected body. Fixed by only storing responses with status
    `< 400` and deleting the claim otherwise (`test/idempotency.test.ts →
    "errors are not cached"`).
+
+---
+
+## Step 3 — Offline-first sync engine
+
+New targets in `ShelfCaseKit`:
+
+| Path | What it is |
+|------|------------|
+| `Sources/ShelfCaseKit/Networking/APIClient.swift` | `ShelfCaseAPI`, `HTTPPerforming`, `URLSessionTransport`, `URLSessionAPIClient` (typed errors, bearer auth, `Idempotency-Key`, capped exponential backoff + jitter) |
+| `Sources/ShelfCaseKit/Storage/LocalStore.swift` | `LocalStore` protocol, `ConflictRecord`, `InMemoryLocalStore`, `ShelfCaseDigest` |
+| `Sources/ShelfCaseKit/Sync/SyncEngine.swift` | `sync() -> SyncReport`, `ConflictResolution` policy |
+| `Sources/ShelfCaseKit/Testing/FaultInjectingAPIClient.swift` | seeded fault injector (latency / timeout / **dropped response** / 5xx) |
+| `Sources/ShelfCaseKit/Testing/SimulatedServer.swift` | in-process server speaking the real API's JSON, `Idempotency-Key` and `change_seq` cursor |
+| `Sources/ShelfCaseSyncSoak/main.swift` | the headless soak harness executable |
+| `scripts/sync-soak.sh` | repeatable wrapper around it |
+
+### `./scripts/swift-test.sh`
+
+```
+Build complete! (8.00 sec)
+✔ Suite "Valuation" passed after 0.013 seconds.
+✔ Suite "URLSessionAPIClient" passed after 0.020 seconds.
+✔ Suite "SyncEngine" passed after 0.159 seconds.
+✔ Test run with 43 tests in 3 suites passed after 0.160 seconds.
+```
+
+| Metric | Value |
+|--------|-------|
+| Tests | **43 passed / 43**, 0 failed |
+| Suites | 3 (`Valuation`, `SyncEngine`, `URLSessionAPIClient`) |
+| Test execution time | 0.160 s |
+| Build + test wall time | 10.04 s (incremental) |
+
+Coverage of the Step 3 requirements: offline-queue replay in `updatedAt` order
+(asserted against the recorded request bodies), dropped-response retry with a
+stable `Idempotency-Key`, conflict policy (both branches), monotonic cursor
+including across a simulated app restart, 200-change batch, pagination, and the
+typed-error / backoff matrix.
+
+### `scripts/sync-soak.sh` — N=200 randomized offline/online cycles (seed 20261016)
+
+```
+==> .../ShelfCaseSyncSoak --scenario soak --cycles 200 --seed 20261016
+
+scenario: soak
+cycles: 200 (seed 20261016); flaky/offline cycles: 133
+mutations: 39 local creates, 51 local edits, 54 remote edits, 51 remote deletes
+drain passes: 1
+pushed: 89  pulled: 109  conflicts: 21  retries: 115  errors: 0
+conflict archive entries: 21
+injected: 52 dropped responses, 41 timeouts, 22 5xx
+sync duration p50: 187 ms   p95: 723 ms   (n=201)
+live items   — local: 19   server: 12
+total rows   — local: 39  server: 39
+local checksum:  ada0b1f4868b6647
+server checksum: bf11dd1e15b56176
+ghost rows (deleted on the server, still live locally): 7
+divergence: live items -7 (server − local), checksum MISMATCH
+```
+
+| Metric | Value |
+|--------|-------|
+| Cycles | **200** (133 of them on a degraded link), seed `20261016` |
+| Mutations | 39 local creates, 51 local edits, 54 remote edits, 51 remote deletes |
+| Pushed / pulled | 89 / 109 |
+| Conflicts (auto-resolved) | 21 |
+| Retries | 115 |
+| Errors | 0 |
+| Injected faults | 52 dropped responses, 41 timeouts, 22 × 5xx |
+| Sync duration | **p50 187 ms, p95 723 ms** (n = 201) |
+| Divergence | **7 ghost rows**; checksums **MISMATCH** |
+| Determinism | 3 consecutive runs report identical counts (only latency varies) |
+
+### Baseline anomalies this harness surfaced (investigated in Step 5)
+
+The harness was written to *measure*, not to pass, and it found two divergences
+between the client and the server at the end of a soak. Both are recorded here as
+the honest pre-fix baseline for `docs/DEBUGGING.md`.
+
+**Anomaly A — duplicate item creation after a lost response.**
+
+```
+$ scripts/sync-soak.sh --scenario duplicates --runs 100
+runs ending with MORE THAN ONE server row: 39 / 100  [39.0%]
+runs ending with MORE THAN ONE local row:  34 / 100  [34.0%]
+server rows: 169   local rows: 159   (both should be 100)
+first duplicate: run 3: server=3 local=1
+```
+
+**Anomaly B — tombstones never reach the device.**
+
+```
+$ scripts/sync-soak.sh --scenario tombstones --runs 100
+deletes performed on the server: 200
+deletes that never reached the client: 200  [100.0%]
+runs affected: 100 / 100
+rows still believed live locally (resurrection risk): 200
+```
+
+**Instrumentation added** so both can be traced: `FaultMetrics` (attempts,
+timeouts, dropped responses, 5xx, injected latency), `SimulatedServer` counters
+(`itemRowsInserted`, `duplicateIdRejections`, `idempotentReplays`,
+`tombstonesServed`), `APIClientMetrics` (requests, retries, conflicts, decode
+failures) and `SyncReport` (pushed / pulled / conflicts / retries / errors /
+durationMs / cursor).
