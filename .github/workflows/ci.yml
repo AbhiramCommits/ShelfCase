@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: server
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: server
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: shelfcase
+          POSTGRES_PASSWORD: shelfcase
+          POSTGRES_DB: shelfcase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shelfcase -d shelfcase"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://shelfcase:shelfcase@localhost:5432/shelfcase
+      TEST_DATABASE_URL: postgres://shelfcase:shelfcase@localhost:5432/shelfcase_test
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: "5432"
+      TEST_DB_USER: shelfcase
+      TEST_DB_PASSWORD: shelfcase
+      TEST_DB_NAME: shelfcase_test
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      TELEMETRY_FILE: ./var/telemetry.test.jsonl
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Pinned: the repository is developed and verified against this minor.
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Migrate twice (proves sql/001_init.sql is idempotent)
+        run: |
+          npm run migrate
+          npm run migrate
+
+      - name: Test with coverage
+        run: npm test -- --coverage
+
+      - name: Seed the demo dataset
+        run: npm run seed
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage
+          path: server/coverage/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ios:
+    name: ios
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report the toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphonesimulator || true
+
+      - name: Cache SwiftPM build products
+        uses: actions/cache@v4
+        with:
+          path: |
+            ShelfCaseKit/.build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('ShelfCaseKit/Package.swift') }}
+          restore-keys: ${{ runner.os }}-spm-
+
+      - name: Install XcodeGen
+        run: |
+          brew update >/dev/null 2>&1 || true
+          brew install xcodegen
+          xcodegen --version
+
+      # Full Xcode is present on this runner, so Swift Testing and XCTest both
+      # work and no plugin-path workaround is needed here.
+      - name: ShelfCaseKit tests with coverage
+        working-directory: ShelfCaseKit
+        run: swift test --enable-code-coverage
+
+      - name: ShelfCaseKit release build (also builds the soak harness)
+        working-directory: ShelfCaseKit
+        run: swift build -c release
+
+      - name: Sync soak — 200 randomised offline/online cycles
+        run: ./scripts/sync-soak.sh --cycles 200 --seed 20261016
+
+      - name: Defect reproduction harness
+        run: ./scripts/repro.sh --runs 50 --skip-baseline
+
+      - name: Generate the Xcode project
+        working-directory: apps/ios
+        run: xcodegen generate
+
+      - name: Build the app for the iOS Simulator
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project ShelfCase.xcodeproj \
+            -scheme ShelfCase \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Run the app unit tests
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project ShelfCase.xcodeproj \
+            -scheme ShelfCase \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Capture a simulator screenshot
+        if: success()
+        working-directory: apps/ios
+        run: |
+          set -euo pipefail
+          APP_DIR=$(xcodebuild -project ShelfCase.xcodeproj -scheme ShelfCase \
+            -destination 'platform=iOS Simulator,name=iPhone 15' -showBuildSettings \
+            | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2; exit}' | xargs)
+          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl install booted "$APP_DIR/ShelfCase.app"
+          xcrun simctl launch booted com.shelfcase.app
+          sleep 5
+          mkdir -p "$GITHUB_WORKSPACE/docs/screenshots"
+          xcrun simctl io booted screenshot "$GITHUB_WORKSPACE/docs/screenshots/01-collection.png"
+
+      - name: Upload screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots
+          path: docs/screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 7

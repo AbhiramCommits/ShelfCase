@@ -521,3 +521,108 @@ not. `p50` moves by a few milliseconds (494–500 ms) — run-to-run timer noise
 `SyncEngine`. Every line carries a timestamp, a correlation id and, where relevant,
 the attempt number and the `Idempotency-Key`. `ShelfCaseSyncSoak --trace` prints
 them; `--verbose` prints per-cycle narration.
+
+---
+
+## Step 6 — Test-suite hardening, CI, and the release pipeline
+
+### Server coverage after hardening
+
+```
+ Test Files  6 passed (6)
+      Tests  81 passed (81)
+   Duration  5.64s
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines |
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   90.29 |    81.51 |   82.69 |   90.29 |
+ src               |   88.66 |    80.35 |   72.41 |   88.66 |
+ src/middleware    |   84.43 |    77.08 |    87.5 |   84.43 |
+ src/routes        |   92.19 |    84.44 |     100 |   92.19 |
+ src/services      |   93.28 |    76.08 |     100 |   93.28 |
+-------------------|---------|----------|---------|---------|-------------------
+```
+
+| Scope | Lines | Target | Met |
+|-------|------:|-------:|-----|
+| `src/routes` | **92.19 %** | ≥ 80 % | ✅ |
+| `src/middleware` | **84.43 %** | ≥ 80 % | ✅ |
+| All files | 90.29 % | — | — |
+
+Thresholds are enforced in `server/vitest.config.ts` (`lines 80`, `statements 80`,
+`functions 70`, `branches 65`), so the build fails if coverage regresses.
+
+### `scripts/swift-test.sh`
+
+```
+✔ Suite "SyncEngine" passed after 0.093 seconds.
+✔ Test run with 48 tests in 4 suites passed after 0.093 seconds.
+```
+
+48 tests across 4 suites (`Valuation`, `SyncEngine`, `URLSessionAPIClient`,
+`Regression: lost responses and lost tombstones`). Covers sync ordering, conflict
+resolution, cursor monotonicity, 200-change batches, pagination, the full
+typed-error/backoff matrix, and both regression suites.
+
+### `.github/workflows/ci.yml`
+
+Validated with a real YAML parse:
+
+```
+YAML OK — jobs: server, ios
+  server: 10 steps on ubuntu-22.04
+  ios: 13 steps on macos-14
+```
+
+| Job | Runner | Services | Steps |
+|-----|--------|----------|-------|
+| `server` | `ubuntu-22.04` | `postgres:16` on 5432 with a `pg_isready` health gate | `npm ci` (cached on `server/package-lock.json`) → `npm run typecheck` → `npm run lint` → `npm run format:check` → `npm run migrate` ×2 (proves the SQL is idempotent) → `npm test -- --coverage` → `npm run seed` → upload coverage artifact |
+| `ios` | `macos-14` | — | cache `.build` + SwiftPM cache → install `xcodegen` → `swift test --enable-code-coverage` → `swift build -c release` → `scripts/sync-soak.sh --cycles 200` → `scripts/repro.sh --runs 50 --skip-baseline` → `xcodegen generate` → `xcodebuild build` (iPhone 15 simulator) → `xcodebuild test` → boot the simulator and capture a screenshot → upload it |
+
+Node is pinned to `22.11.0`; the `.build` and npm caches are keyed on
+`Package.swift` / `package-lock.json`.
+
+### `scripts/release.sh --dry-run` — executed here
+
+```
+== Preflight
+  ✘ xcodebuild is not available — full Xcode is required and is not installed
+     xcode-select -p -> /Library/Developer/CommandLineTools
+     (dry run: continuing to print the plan)
+  ✔ xcodegen: Version: 2.46.0
+  ✘ DEVELOPMENT_TEAM is not set — an archive cannot be signed
+  ✘ no Apple Distribution identity in the keychain
+
+== Version
+  MARKETING_VERSION=1.0.0  CURRENT_PROJECT_VERSION=1
+
+== Generate the Xcode project
+  ✔ ShelfCase.xcodeproj generated
+
+== Archive
+  ⊘ SKIPPED (requires Xcode and DEVELOPMENT_TEAM)
+
+== ExportOptions.plist
+  ✔ using the committed /…/apps/ios/ExportOptions.plist
+  method: app-store  teamID: <unset>
+
+== Export the .ipa
+  ⊘ SKIPPED (no archive present (archive step must succeed first))
+
+== Upload to App Store Connect
+  ⊘ SKIPPED (--upload not passed)
+
+== dSYMs
+  ⊘ SKIPPED (no dSYMs (archive step did not run))
+```
+
+| Release step | Executed here | Notes |
+|--------------|---------------|-------|
+| `xcodegen generate` | ✅ | run as part of `release.sh` |
+| `xcodebuild archive` | ⊘ | needs Xcode + `DEVELOPMENT_TEAM` |
+| `xcodebuild -exportArchive` | ⊘ | needs the archive |
+| `xcrun altool --upload-app` | ⊘ | needs the archive + App Store Connect key |
+| dSYM inventory | ⊘ | needs the archive |
+
+Full runbook, versioning rules, TestFlight tester groups and the list of steps that
+require an Apple Developer account: **`docs/TESTFLIGHT.md`**.
