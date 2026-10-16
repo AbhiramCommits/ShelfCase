@@ -15,10 +15,7 @@ const TRADE_SELECT = `
 `;
 
 async function loadTrade(queryable: Queryable, id: string): Promise<TradeRow | null> {
-  const { rows } = await queryable.query<TradeRow>(
-    `${TRADE_SELECT} WHERE t.id = $1 GROUP BY t.id`,
-    [id],
-  );
+  const { rows } = await queryable.query<TradeRow>(`${TRADE_SELECT} WHERE t.id = $1 GROUP BY t.id`, [id]);
   return rows[0] ?? null;
 }
 
@@ -26,11 +23,7 @@ async function loadTrade(queryable: Queryable, id: string): Promise<TradeRow | n
  * Move `itemIds` to `newOwnerId`, bumping version/updated_at/change_seq so the
  * swap shows up in every client's delta pull.
  */
-async function transferOwnership(
-  client: PoolClient,
-  itemIds: string[],
-  newOwnerId: string,
-): Promise<number> {
+async function transferOwnership(client: PoolClient, itemIds: string[], newOwnerId: string): Promise<number> {
   if (itemIds.length === 0) return 0;
   const { rowCount } = await client.query(
     `UPDATE items
@@ -44,12 +37,7 @@ async function transferOwnership(
   return rowCount ?? 0;
 }
 
-async function assertOwned(
-  client: PoolClient,
-  itemIds: string[],
-  ownerId: string,
-  what: string,
-): Promise<void> {
+async function assertOwned(client: PoolClient, itemIds: string[], ownerId: string, what: string): Promise<void> {
   const { rows } = await client.query<Pick<ItemRow, "id" | "owner_user_id">>(
     `SELECT id, owner_user_id FROM items WHERE id = ANY($1::uuid[])`,
     [itemIds],

@@ -278,6 +278,7 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
     private let tokenProvider: @Sendable () -> String?
     private let retryPolicy: RetryPolicy
     private let keyGenerator: KeyGenerator
+    private let trace: TraceSink?
     private let lock = NSLock()
     private var mutableMetrics = APIClientMetrics()
 
@@ -285,12 +286,14 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
         transport: HTTPPerforming,
         tokenProvider: @escaping @Sendable () -> String?,
         retryPolicy: RetryPolicy = RetryPolicy(),
-        keyGenerator: @escaping KeyGenerator = { UUID().uuidString.lowercased() }
+        keyGenerator: @escaping KeyGenerator = { UUID().uuidString.lowercased() },
+        trace: TraceSink? = nil
     ) {
         self.transport = transport
         self.tokenProvider = tokenProvider
         self.retryPolicy = retryPolicy
         self.keyGenerator = keyGenerator
+        self.trace = trace
     }
 
     public var metrics: APIClientMetrics {
@@ -302,14 +305,16 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
     // MARK: Item writes
 
     public func createItem(_ item: CollectibleItem, idempotencyKey: String) async throws -> ItemWriteResponse {
-        // NOTE: the create payload intentionally omits the client-generated id —
-        // the server is treated as the authority for row identity.
+        // The create payload carries the client-generated id. Row identity has to
+        // survive a lost response, otherwise a retry writes a second row: see
+        // docs/DEBUGGING.md §A.
         let payload = CreateItemPayload(item: item)
         return try await send(
             method: "POST",
             path: "/items",
             body: payload,
-            idempotencyKey: idempotencyKey
+            idempotencyKey: idempotencyKey,
+            subject: item.id.uuidString.lowercased()
         )
     }
 
@@ -319,7 +324,8 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
             method: "PATCH",
             path: "/items/\(item.id.uuidString.lowercased())",
             body: payload,
-            idempotencyKey: idempotencyKey
+            idempotencyKey: idempotencyKey,
+            subject: item.id.uuidString.lowercased()
         )
     }
 
@@ -329,7 +335,8 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
             path: "/items/\(id.uuidString.lowercased())",
             query: ["version": String(version)],
             body: Optional<EmptyBody>.none,
-            idempotencyKey: idempotencyKey
+            idempotencyKey: idempotencyKey,
+            subject: id.uuidString.lowercased()
         )
     }
 
@@ -343,7 +350,8 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
             path: "/sync/pull",
             query: query,
             body: Optional<EmptyBody>.none,
-            idempotencyKey: nil
+            idempotencyKey: nil,
+            subject: since ?? "root"
         )
     }
 
@@ -354,7 +362,8 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
         path: String,
         query: [String: String] = [:],
         body: Body?,
-        idempotencyKey: String?
+        idempotencyKey: String?,
+        subject: String
     ) async throws -> Response {
         var headers: [String: String] = ["Accept": "application/json"]
         if let token = tokenProvider() {
@@ -374,6 +383,7 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
 
         let request = HTTPRequest(method: method, path: path, query: query, headers: headers, body: encoded)
 
+        let requestId = TraceIdentifiers.next(prefix: "http")
         var attempt = 0
         var lastError: APIClientError = .transport("no attempt made")
         var generator = SystemRandomNumberGenerator()
@@ -381,14 +391,64 @@ public final class URLSessionAPIClient: ShelfCaseAPI, APIClientMetricsReporting,
         while attempt < retryPolicy.maxAttempts {
             attempt += 1
             noteRequest()
+            trace?.emit(
+                requestId: requestId,
+                "http.attempt",
+                [
+                    "method": method,
+                    "path": path,
+                    "attempt": "\(attempt)/\(retryPolicy.maxAttempts)",
+                    "subject": subject,
+                    "idempotencyKey": idempotencyKey ?? "-",
+                ]
+            )
+
             do {
                 let response = try await transport.perform(request)
-                return try interpret(response)
+                let decoded: Response = try interpret(response)
+                trace?.emit(
+                    requestId: requestId,
+                    "http.ok",
+                    ["method": method, "path": path, "status": "\(response.statusCode)", "attempt": "\(attempt)"]
+                )
+                return decoded
             } catch let error as APIClientError {
                 lastError = error
-                guard error.isRetryable, attempt < retryPolicy.maxAttempts else { throw error }
+                guard error.isRetryable, attempt < retryPolicy.maxAttempts else {
+                    trace?.emit(
+                        requestId: requestId,
+                        "http.failed",
+                        level: .error,
+                        [
+                            "method": method,
+                            "path": path,
+                            "attempt": "\(attempt)",
+                            "reason": error.describingForTelemetry,
+                            "idempotencyKey": idempotencyKey ?? "-",
+                        ]
+                    )
+                    throw error
+                }
+
+                let delay = retryPolicy.delay(forAttempt: attempt, using: &generator)
                 noteRetry()
-                try await Task.sleep(for: retryPolicy.delay(forAttempt: attempt, using: &generator))
+                let delayMs = Int(
+                    Double(delay.components.seconds) * 1000 + Double(delay.components.attoseconds) / 1e15
+                )
+                trace?.emit(
+                    requestId: requestId,
+                    "http.retry",
+                    level: .warn,
+                    [
+                        "method": method,
+                        "path": path,
+                        "attempt": "\(attempt)",
+                        "reason": error.describingForTelemetry,
+                        "backoffMs": "\(delayMs)",
+                        "idempotencyKey": idempotencyKey ?? "-",
+                    ]
+                )
+                try await Task.sleep(for: delay)
             }
         }
         throw lastError
@@ -443,9 +503,11 @@ private struct EmptyBody: Encodable {}
 
 /// Body for `POST /items`.
 ///
-/// The client deliberately does **not** send `id`: row identity is treated as
-/// server-owned, and the local item is re-keyed from the response.
+/// The client **must** send its own `id`. Row identity has to survive a lost
+/// response: without it, a retry after the server already committed creates a
+/// second row. See `docs/DEBUGGING.md` §A.
 struct CreateItemPayload: Encodable {
+    let id: UUID
     let title: String
     let setName: String
     let category: ItemCategory
@@ -457,6 +519,7 @@ struct CreateItemPayload: Encodable {
     let imageLocalPath: String?
 
     init(item: CollectibleItem) {
+        self.id = item.id
         self.title = item.title
         self.setName = item.setName
         self.category = item.category

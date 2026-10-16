@@ -247,10 +247,7 @@ describe("decline and cancel", () => {
 
   it("forbids the proposer from declining", async () => {
     const tradeId = await propose();
-    await request(application)
-      .post(`/trades/${tradeId}/decline`)
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(403);
+    await request(application).post(`/trades/${tradeId}/decline`).set("Authorization", auth(TOKENS.alice)).expect(403);
   });
 
   it("lets the proposer cancel and is idempotent", async () => {
@@ -339,9 +336,6 @@ describe("GET /trades", () => {
       .get(`/trades/${proposed.body.trade.id}`)
       .set("Authorization", auth(TOKENS.alice))
       .expect(200);
-    await request(application)
-      .get(`/trades/${randomUUID()}`)
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(404);
+    await request(application).get(`/trades/${randomUUID()}`).set("Authorization", auth(TOKENS.alice)).expect(404);
   });
 });

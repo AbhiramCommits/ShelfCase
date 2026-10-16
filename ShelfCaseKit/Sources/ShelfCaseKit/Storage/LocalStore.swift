@@ -74,6 +74,16 @@ public protocol LocalStore: AnyObject, Sendable {
     func cursor() async throws -> String?
     func setCursor(_ value: String) async throws
 
+    /// The `Idempotency-Key` pinned to a pending change, or `nil` when none has
+    /// been chosen yet.
+    ///
+    /// This must be **persisted**. An in-memory key only survives one sync pass,
+    /// so a create whose reply is lost and which is retried after the app is
+    /// relaunched looks like a brand-new request to the server — which is exactly
+    /// how duplicate rows get created. See `docs/DEBUGGING.md` §A.
+    func pendingIdempotencyKey(forItem id: UUID) async throws -> String?
+    func setPendingIdempotencyKey(_ key: String?, forItem id: UUID) async throws
+
     func upsertObservation(_ observation: PriceObservation) async throws
     func observations(forItem id: UUID) async throws -> [PriceObservation]
 }
@@ -94,6 +104,7 @@ public actor InMemoryLocalStore: LocalStore {
     private var observationsByItem: [UUID: [PriceObservation]] = [:]
     private var conflicts: [ConflictRecord] = []
     private var storedCursor: String?
+    private var idempotencyKeys: [UUID: String] = [:]
 
     /// Every change the engine has pushed, in order. Diagnostics only.
     public private(set) var appliedServerChanges: [UUID] = []
@@ -125,6 +136,23 @@ public actor InMemoryLocalStore: LocalStore {
     }
 
     public func applyServerChange(_ item: CollectibleItem) async throws {
+        if let existing = items[item.id], existing.syncState.isPending {
+            // A pulled row must not silently discard an unpushed local change:
+            // that is what the 409 conflict path exists to resolve. The one
+            // exception is a tombstone — the row is gone server-side, so the local
+            // copy has to go with it or the next edit resurrects it.
+            guard item.isDeleted else { return }
+            var tombstone = existing
+            tombstone.isDeleted = true
+            tombstone.version = item.version
+            tombstone.updatedAt = item.updatedAt
+            tombstone.syncState = .synced
+            items[item.id] = tombstone
+            idempotencyKeys.removeValue(forKey: item.id)
+            appliedServerChanges.append(item.id)
+            return
+        }
+
         items[item.id] = item
         appliedServerChanges.append(item.id)
     }
@@ -146,6 +174,23 @@ public actor InMemoryLocalStore: LocalStore {
         item.updatedAt = serverUpdatedAt
         item.syncState = .synced
         items[item.id] = item
+
+        // The change is resolved, so its idempotency key is retired. A later edit
+        // gets a fresh key.
+        idempotencyKeys.removeValue(forKey: id)
+        idempotencyKeys.removeValue(forKey: item.id)
+    }
+
+    public func pendingIdempotencyKey(forItem id: UUID) async throws -> String? {
+        idempotencyKeys[id]
+    }
+
+    public func setPendingIdempotencyKey(_ key: String?, forItem id: UUID) async throws {
+        if let key {
+            idempotencyKeys[id] = key
+        } else {
+            idempotencyKeys.removeValue(forKey: id)
+        }
     }
 
     public func recordConflict(_ record: ConflictRecord) async throws {

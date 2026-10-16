@@ -5,18 +5,28 @@ import type { ItemCreateInput, ItemPatchInput } from "../schemas.js";
 
 export type { ItemCreateInput, ItemPatchInput };
 
+export interface InsertItemResult {
+  row: ItemRow;
+  /** True when the row already existed and this call was a retried create. */
+  replayed: boolean;
+}
+
 /**
- * Insert a new item.
+ * Insert a new item, idempotently on the client-supplied id.
+ *
+ * A client that creates offline sends its own id, so a retry after a lost
+ * response must land on the row the server already wrote rather than exploding
+ * on the primary key — or, worse, minting a second row. `ON CONFLICT DO NOTHING`
+ * plus a re-read makes the retry a `200` replay of the original create.
  *
  * Ownership is always taken from the authenticated caller, never from the
- * request body — `ownerUserId` is listed in the payload schema only so clients
- * can round-trip a full `CollectibleItem` through the sync push endpoint.
+ * request body.
  */
 export async function insertItem(
   queryable: Queryable,
   ownerUserId: string,
   body: ItemCreateInput,
-): Promise<ItemRow> {
+): Promise<InsertItemResult> {
   const id = body.id ?? randomUUID();
 
   const { rows } = await queryable.query<ItemRow>(
@@ -24,6 +34,7 @@ export async function insertItem(
        (id, owner_user_id, title, set_name, category, condition_grade,
         purchase_price_cents, estimated_value_cents, acquired_at, notes, image_local_path)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now()), $10, $11)
+     ON CONFLICT (id) DO NOTHING
      RETURNING *`,
     [
       id,
@@ -40,7 +51,15 @@ export async function insertItem(
     ],
   );
 
-  return rows[0]!;
+  if (rows[0]) return { row: rows[0], replayed: false };
+
+  // Lost the race, or this is a retry: hand back the winner.
+  const existing = await queryable.query<ItemRow>(`SELECT * FROM items WHERE id = $1`, [id]);
+  const row = existing.rows[0];
+  if (!row) {
+    throw new Error(`insertItem: row ${id} neither inserted nor found`);
+  }
+  return { row, replayed: true };
 }
 
 /** Soft delete that participates in delta sync via `change_seq`. */

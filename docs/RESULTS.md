@@ -411,3 +411,113 @@ could not be found for macro 'Model()'; plugin for module 'SwiftDataMacros' not 
 | `Networking/TradeService.swift` | `/trades` and `/wishlist` client |
 
 APNs payload shapes are documented in `docs/APNS.md`.
+
+---
+
+## Step 5 — Defect investigation, fixes, and before/after measurements
+
+Full write-ups: **`docs/DEBUGGING.md`**. Reproduction: `./scripts/repro.sh --runs 100`.
+
+The "before" column is **not simulated**. `scripts/repro.sh` checks the pre-fix
+revision out of git (`tag: baseline/pre-step5` = `ba7c9b3`, the Step 4 commit) into
+a throwaway `git worktree`, copies the identical regression tests in, rebuilds, and
+re-runs everything there.
+
+### `scripts/repro.sh --runs 100` — final summary
+
+```
+  runs with duplicate server rows (of 100)       before:       39 / 100   after:        0 / 100
+  server rows created (expected 100)             before:            169   after:            100
+  deletes lost on the delta pull                 before:            200   after:              0
+  Kit regression test methods failing            before:              4   after:              0
+  server regression tests failing                before:              6   after:              0
+```
+
+### Defect A — duplicate creation after a lost response
+
+```
+BEFORE (baseline ba7c9b3):
+    dropped responses injected: 308
+    runs ending with MORE THAN ONE server row: 39 / 100  [39.0%]
+    runs ending with MORE THAN ONE local row:  34 / 100  [34.0%]
+    server rows: 169   local rows: 159   (both should be 100)
+
+AFTER (working tree):
+    dropped responses injected: 308
+    runs ending with MORE THAN ONE server row: 0 / 100  [0.0%]
+    runs ending with MORE THAN ONE local row:  0 / 100  [0.0%]
+    server rows: 100   local rows: 100   (both should be 100)
+```
+
+Identical fault injection on both sides (308 dropped responses), so the delta is
+the fix. Real HTTP against both Express revisions:
+
+```
+BEFORE:
+  POST #1 (fresh create)            -> HTTP 201
+  POST #2 (retry, new key, same id) -> HTTP 500
+  server log: "error":"duplicate key value violates unique constraint \"items_pkey\""
+              "requestId":"repro-baseline-2"
+AFTER:
+  POST #1 (fresh create)            -> HTTP 201
+  POST #2 (retry, new key, same id) -> HTTP 200   (X-Idempotent-Replay: true)
+  rows in items for that id         -> 1
+```
+
+### Defect B — tombstones lost on the delta pull
+
+```
+BEFORE:
+    deletes performed on the server: 200
+    deletes that never reached the client: 200  [100.0%]
+    runs affected: 100 / 100
+    rows still believed live locally (resurrection risk): 200
+
+AFTER:
+    deletes performed on the server: 200
+    deletes that never reached the client: 0  [0.0%]
+    runs affected: 0 / 100
+    rows still believed live locally (resurrection risk): 0
+```
+
+### Post-fix soak — 200 cycles, seed 20261016
+
+```
+scenario: soak
+cycles: 200 (seed 20261016); flaky/offline cycles: 141
+mutations: 50 local creates, 16 local edits, 47 concurrent edits, 17 local deletes, 98 remote edits, 13 remote deletes
+drain passes: 1
+pushed: 127  pulled: 224  tombstones: 30  conflicts: 66  retries: 171  errors: 0
+conflict archive entries: 66
+injected: 97 dropped responses, 41 timeouts, 33 5xx
+sync duration p50: 496 ms   p95: 921 ms   (n=201)
+live items   — local: 20   server: 20
+total rows   — local: 50  server: 50
+local checksum:  47606d128a0cec36
+server checksum: 47606d128a0cec36
+ghost rows (deleted on the server, still live locally): 0
+divergence: live items +0 (server − local), checksum MATCH
+```
+
+Three consecutive runs report **identical counts** (127 pushed / 224 pulled / 30
+tombstones / 66 conflicts / 171 retries / 0 errors) and `checksum MATCH`. The
+surviving-row *digest* differs between runs because remote mutations pick targets
+from a list ordered by wall-clock `updatedAt`; the verdict is stable, the digest is
+not. `p50` moves by a few milliseconds (494–500 ms) — run-to-run timer noise.
+
+### Test suites after the fix
+
+| Suite | Result |
+|-------|--------|
+| `scripts/swift-test.sh` | **48 tests in 4 suites passed** (was 43 before the regression tests) |
+| `npm test` (server) | **81 tests in 6 files passed** (was 75 before `regression.test.ts`) |
+
+### Instrumentation added for these investigations
+
+`ShelfCaseKit/Instrumentation/Trace.swift` (`TraceEvent` + `TraceSink`) with
+`http.attempt` / `http.retry` / `http.ok` / `http.failed` emitters in
+`URLSessionAPIClient` and `sync.start` / `push.change` / `push.applied` /
+`push.conflict` / `push.failed` / `pull.page` / `pull.tombstone` / `sync.end` in
+`SyncEngine`. Every line carries a timestamp, a correlation id and, where relevant,
+the attempt number and the `Idempotency-Key`. `ShelfCaseSyncSoak --trace` prints
+them; `--verbose` prints per-cycle narration.

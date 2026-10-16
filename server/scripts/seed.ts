@@ -181,11 +181,41 @@ async function main(): Promise<void> {
   const carolItems = itemIds.filter((id) => itemOwner.get(id) === SEED_USERS.carol);
 
   const tradePlans = [
-    { proposer: SEED_USERS.alice, receiver: SEED_USERS.bob, offered: aliceItems.slice(0, 2), requested: bobItems.slice(0, 1), status: "proposed" },
-    { proposer: SEED_USERS.bob, receiver: SEED_USERS.alice, offered: bobItems.slice(1, 2), requested: aliceItems.slice(2, 3), status: "proposed" },
-    { proposer: SEED_USERS.carol, receiver: SEED_USERS.alice, offered: carolItems.slice(0, 1), requested: aliceItems.slice(3, 4), status: "declined" },
-    { proposer: SEED_USERS.alice, receiver: SEED_USERS.carol, offered: aliceItems.slice(4, 5), requested: carolItems.slice(1, 2), status: "cancelled" },
-    { proposer: SEED_USERS.bob, receiver: SEED_USERS.carol, offered: bobItems.slice(2, 3), requested: carolItems.slice(2, 3), status: "accepted" },
+    {
+      proposer: SEED_USERS.alice,
+      receiver: SEED_USERS.bob,
+      offered: aliceItems.slice(0, 2),
+      requested: bobItems.slice(0, 1),
+      status: "proposed",
+    },
+    {
+      proposer: SEED_USERS.bob,
+      receiver: SEED_USERS.alice,
+      offered: bobItems.slice(1, 2),
+      requested: aliceItems.slice(2, 3),
+      status: "proposed",
+    },
+    {
+      proposer: SEED_USERS.carol,
+      receiver: SEED_USERS.alice,
+      offered: carolItems.slice(0, 1),
+      requested: aliceItems.slice(3, 4),
+      status: "declined",
+    },
+    {
+      proposer: SEED_USERS.alice,
+      receiver: SEED_USERS.carol,
+      offered: aliceItems.slice(4, 5),
+      requested: carolItems.slice(1, 2),
+      status: "cancelled",
+    },
+    {
+      proposer: SEED_USERS.bob,
+      receiver: SEED_USERS.carol,
+      offered: bobItems.slice(2, 3),
+      requested: carolItems.slice(2, 3),
+      status: "accepted",
+    },
   ].filter((plan) => plan.offered.length > 0 && plan.requested.length > 0);
 
   let tradeIndex = 0;
@@ -211,10 +241,7 @@ async function main(): Promise<void> {
 
     // Keep accepted trades consistent with the ownership swap the API performs.
     if (plan.status === "accepted") {
-      await pool.query(`UPDATE items SET owner_user_id = $1 WHERE id = ANY($2::uuid[])`, [
-        plan.receiver,
-        plan.offered,
-      ]);
+      await pool.query(`UPDATE items SET owner_user_id = $1 WHERE id = ANY($2::uuid[])`, [plan.receiver, plan.offered]);
       await pool.query(`UPDATE items SET owner_user_id = $1 WHERE id = ANY($2::uuid[])`, [
         plan.proposer,
         plan.requested,

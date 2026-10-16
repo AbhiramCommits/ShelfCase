@@ -16,8 +16,7 @@ export default async function globalSetup(): Promise<void> {
     env: process.env,
   });
 
-  const url =
-    process.env.TEST_DATABASE_URL ?? "postgres://shelfcase:shelfcase@localhost:55432/shelfcase_test";
+  const url = process.env.TEST_DATABASE_URL ?? "postgres://shelfcase:shelfcase@localhost:55432/shelfcase_test";
 
   // Import after the database exists so the pool connects to a real database.
   process.env.DATABASE_URL = url;

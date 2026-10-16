@@ -5,12 +5,7 @@ import { pool } from "../db.js";
 import { parseCursor, advanceCursor } from "../cursor.js";
 import { ApiError } from "../errors.js";
 import { toItemDto, toObservationDto, type ItemRow, type ObservationRow } from "../mappers.js";
-import {
-  itemsQuerySchema,
-  itemCreateSchema,
-  itemPatchSchema,
-  observationCreateSchema,
-} from "../schemas.js";
+import { itemsQuerySchema, itemCreateSchema, itemPatchSchema, observationCreateSchema } from "../schemas.js";
 import { insertItem, patchItem, softDeleteItem } from "../services/items.js";
 import { findWishlistMatches } from "../services/wishlist.js";
 
@@ -78,13 +73,16 @@ export function itemsRouter(): Router {
   router.post("/", async (req, res, next) => {
     try {
       const body = itemCreateSchema.parse(req.body);
-      const item = await insertItem(pool, req.userId, body);
-      const wishlistMatches = await findWishlistMatches(
-        pool,
-        req.userId,
-        item.title,
-        item.estimated_value_cents,
-      );
+      const { row: item, replayed } = await insertItem(pool, req.userId, body);
+      const wishlistMatches = await findWishlistMatches(pool, req.userId, item.title, item.estimated_value_cents);
+
+      if (replayed) {
+        // A retried create that already landed. `200` (not `201`) so a client can
+        // tell it apart, with the original row so it can reconcile.
+        res.setHeader("X-Idempotent-Replay", "true");
+        res.status(200).json({ item: toItemDto(item), wishlistMatches });
+        return;
+      }
 
       res.status(201).json({ item: toItemDto(item), wishlistMatches });
     } catch (error) {

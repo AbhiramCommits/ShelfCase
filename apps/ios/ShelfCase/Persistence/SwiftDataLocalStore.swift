@@ -54,6 +54,17 @@ public actor SwiftDataLocalStore: LocalStore {
         if let existing = try entity(id: item.id) {
             // Never let a pull clobber a local edit that has not been pushed yet:
             // the engine resolves that through a 409, not through a blind write.
+            // A tombstone is the exception — the row is gone server-side, so the
+            // local copy must go too or the next edit resurrects it.
+            if item.isDeleted {
+                existing.isDeleted = true
+                existing.version = item.version
+                existing.updatedAt = item.updatedAt
+                existing.syncStateRaw = SyncState.synced.rawValue
+                existing.idempotencyKey = nil
+                try save()
+                return
+            }
             guard !existing.syncState.isPending else { return }
             existing.apply(item)
         } else {
@@ -78,13 +89,27 @@ public actor SwiftDataLocalStore: LocalStore {
             replacement.version = serverVersion
             replacement.updatedAt = serverUpdatedAt
             replacement.syncStateRaw = SyncState.synced.rawValue
+            replacement.idempotencyKey = nil
             context.delete(existing)
             context.insert(replacement)
         } else {
             existing.version = serverVersion
             existing.updatedAt = serverUpdatedAt
             existing.syncStateRaw = SyncState.synced.rawValue
+            // The change is resolved, so its key is retired. A later edit gets a
+            // fresh one.
+            existing.idempotencyKey = nil
         }
+        try save()
+    }
+
+    public func pendingIdempotencyKey(forItem id: UUID) async throws -> String? {
+        try entity(id: id)?.idempotencyKey
+    }
+
+    public func setPendingIdempotencyKey(_ key: String?, forItem id: UUID) async throws {
+        guard let existing = try entity(id: id) else { return }
+        existing.idempotencyKey = key
         try save()
     }
 

@@ -27,6 +27,8 @@ export interface PushResult {
   status: PushResultStatus;
   serverItem?: unknown;
   serverVersion?: number;
+  /** Set when a create landed on a row the server had already written. */
+  replayed?: boolean;
   code?: string;
   message?: string;
 }
@@ -80,10 +82,7 @@ export function syncRouter(): Router {
       const cursor = parseCursor(query.since);
       const limit = query.limit;
 
-      const seqFilter = (
-        table: string,
-        timeColumn: string,
-      ): { clause: string; params: unknown[] } => {
+      const seqFilter = (table: string, timeColumn: string): { clause: string; params: unknown[] } => {
         if (cursor.seq > 0) return { clause: `${table}.change_seq > $1`, params: [cursor.seq, limit] };
         if (cursor.updatedAt) return { clause: `${table}.${timeColumn} > $1`, params: [cursor.updatedAt, limit] };
         return { clause: "true", params: [limit] };
@@ -163,8 +162,14 @@ async function applyChange(
     case "item": {
       if (change.op === "create") {
         const parsed = itemCreateSchema.parse({ ...change.payload, id: change.id });
-        const row = await insertItem(pool, userId, parsed);
-        return { ...base, status: "applied", serverItem: toItemDto(row), serverVersion: row.version };
+        const { row, replayed } = await insertItem(pool, userId, parsed);
+        return {
+          ...base,
+          status: "applied",
+          serverItem: toItemDto(row),
+          serverVersion: row.version,
+          ...(replayed ? { replayed: true } : {}),
+        };
       }
       if (change.op === "update") {
         const parsed = itemPatchSchema.parse(change.payload);

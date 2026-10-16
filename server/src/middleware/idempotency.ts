@@ -95,9 +95,7 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
         } else {
           // Never cache a failure: the client must be able to fix its request
           // and retry with the same key.
-          void pool
-            .query(`DELETE FROM request_log WHERE idempotency_key = $1`, [key])
-            .catch(() => undefined);
+          void pool.query(`DELETE FROM request_log WHERE idempotency_key = $1`, [key]).catch(() => undefined);
         }
         return originalJson(body);
       };
@@ -121,10 +119,11 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
 
 async function waitForStoredResponse(key: string, attempts = 25, delayMs = 40): Promise<StoredResponse | null> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const { rows } = await pool.query<{ response_body: StoredResponse | null; completed: boolean; status_code: number | null }>(
-      `SELECT response_body, completed, status_code FROM request_log WHERE idempotency_key = $1`,
-      [key],
-    );
+    const { rows } = await pool.query<{
+      response_body: StoredResponse | null;
+      completed: boolean;
+      status_code: number | null;
+    }>(`SELECT response_body, completed, status_code FROM request_log WHERE idempotency_key = $1`, [key]);
     const row = rows[0];
     if (row?.completed && row.response_body) {
       return row.response_body;

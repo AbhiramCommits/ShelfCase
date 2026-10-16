@@ -1,16 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  ALICE,
-  BOB,
-  TOKENS,
-  app,
-  auth,
-  countRows,
-  createItem,
-  randomUUID,
-  request,
-  resetDatabase,
-} from "./helpers.js";
+import { ALICE, BOB, TOKENS, app, auth, countRows, createItem, randomUUID, request, resetDatabase } from "./helpers.js";
 
 const application = app();
 
@@ -34,10 +23,7 @@ describe("auth middleware", () => {
   });
 
   it("rejects an unknown bearer token", async () => {
-    const response = await request(application)
-      .get("/items")
-      .set("Authorization", "Bearer dev-nobody")
-      .expect(401);
+    const response = await request(application).get("/items").set("Authorization", "Bearer dev-nobody").expect(401);
     expect(response.body.error.message).toContain("dev-nobody");
   });
 
@@ -46,10 +32,7 @@ describe("auth middleware", () => {
   });
 
   it("echoes an inbound X-Request-Id", async () => {
-    const response = await request(application)
-      .get("/health")
-      .set("X-Request-Id", "trace-abc-123")
-      .expect(200);
+    const response = await request(application).get("/health").set("X-Request-Id", "trace-abc-123").expect(200);
     expect(response.headers["x-request-id"]).toBe("trace-abc-123");
   });
 });
@@ -250,10 +233,7 @@ describe("item listing filters and delta sync", () => {
     const first = await createItem(application, "alice", { title: "First" });
     await createItem(application, "alice", { title: "Second" });
 
-    const page = await request(application)
-      .get("/items")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    const page = await request(application).get("/items").set("Authorization", auth(TOKENS.alice)).expect(200);
     const cursor = page.body.nextCursor as string;
     expect(cursor).toMatch(/\|/);
 
@@ -291,10 +271,7 @@ describe("item listing filters and delta sync", () => {
     for (let index = 0; index < 5; index += 1) {
       await createItem(application, "alice", { title: `Item ${index}` });
     }
-    const first = await request(application)
-      .get("/items?limit=2")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    const first = await request(application).get("/items?limit=2").set("Authorization", auth(TOKENS.alice)).expect(200);
     expect(first.body.items).toHaveLength(2);
     expect(first.body.hasMore).toBe(true);
 
@@ -344,10 +321,7 @@ describe("price observations", () => {
 
 describe("unknown routes", () => {
   it("returns a structured 404", async () => {
-    const response = await request(application)
-      .get("/nope")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(404);
+    const response = await request(application).get("/nope").set("Authorization", auth(TOKENS.alice)).expect(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 });

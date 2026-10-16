@@ -10,10 +10,7 @@ function required(name: string, fallback: string): string {
 export const config = {
   env: required("NODE_ENV", "development"),
   port: Number(required("PORT", "4000")),
-  databaseUrl: required(
-    "DATABASE_URL",
-    "postgres://shelfcase:shelfcase@localhost:55432/shelfcase",
-  ),
+  databaseUrl: required("DATABASE_URL", "postgres://shelfcase:shelfcase@localhost:55432/shelfcase"),
   pgPoolMax: Number(required("PG_POOL_MAX", "10")),
   logLevel: required("LOG_LEVEL", "info") as "debug" | "info" | "warn" | "error" | "silent",
   /** Bearer token -> seeded user id. Dev-only; a real deployment swaps this for JWT. */

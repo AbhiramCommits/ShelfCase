@@ -9,6 +9,7 @@ struct Options {
     var runs = 100
     var seed: UInt64 = 20_261_016
     var trace = false
+    var verbose = false
     /// Server-side create behaviour. `replay` is the fixed Express route,
     /// `reject` is the pre-fix route (raw unique-violation 500).
     var createSemantics: CreateSemantics = .replayExistingRow
@@ -30,6 +31,7 @@ struct Options {
             case "--create-semantics":
                 options.createSemantics = (value() == "reject") ? .rejectDuplicateId : .replayExistingRow
             case "--trace": options.trace = true
+            case "--verbose": options.verbose = true
             case "--help", "-h":
                 print(Options.usage)
                 exit(0)
@@ -53,7 +55,8 @@ struct Options {
       --runs N                repetitions for duplicates/tombstones (default 100)
       --seed S                master seed; each run is offset by its index (default 20261016)
       --create-semantics X    reject | replay   (server-side POST /items behaviour)
-      --trace                 print per-run detail
+      --trace                 print the instrumented trace (real log lines)
+      --verbose               print per-cycle narration
 
     SCENARIOS:
       duplicates   "one offline create, reply lost, app retried later".
@@ -99,14 +102,16 @@ final class Stack {
     init(
         options: SimulatedServer.Options = .init(),
         profile: FaultProfile = .reliable,
-        retryPolicy: RetryPolicy = .immediate
+        retryPolicy: RetryPolicy = .immediate,
+        trace: TraceSink? = nil
     ) {
         let server = SimulatedServer(options: options)
         let transport = FaultInjectingAPIClient(wrapping: InMemoryHTTPTransport(server: server), profile: profile)
         let client = URLSessionAPIClient(
             transport: transport,
             tokenProvider: { "dev-alice" },
-            retryPolicy: retryPolicy
+            retryPolicy: retryPolicy,
+            trace: trace
         )
         let store = InMemoryLocalStore()
 
@@ -114,7 +119,7 @@ final class Stack {
         self.store = store
         self.client = client
         self.transport = transport
-        self.engine = SyncEngine(api: client, store: store)
+        self.engine = SyncEngine(api: client, store: store, trace: trace)
     }
 
     func localItem(title: String, value: Int = 1_000) -> CollectibleItem {
@@ -171,7 +176,8 @@ func scenarioDuplicates(options: Options) async -> String {
         let stack = Stack(
             options: .init(createSemantics: options.createSemantics),
             profile: profile,
-            retryPolicy: retryPolicy
+            retryPolicy: retryPolicy,
+            trace: globalTrace
         )
         let item = stack.localItem(title: "Card \(run)", value: 10_000 + run)
         try? await stack.store.upsert(item)
@@ -203,7 +209,7 @@ func scenarioDuplicates(options: Options) async -> String {
             worstRun = "run \(run): server=\(serverCount) local=\(localCount)"
         }
 
-        if options.trace {
+        if options.verbose {
             print("  run \(run): server=\(serverCount) local=\(localCount) drops=\(metrics.droppedResponsesInjected)")
         }
     }
@@ -234,7 +240,7 @@ func scenarioTombstones(options: Options) async -> String {
     var totalResurrected = 0
 
     for run in 0..<options.runs {
-        let stack = Stack()
+        let stack = Stack(trace: globalTrace)
         var created: [UUID] = []
 
         for index in 0..<perRun {
@@ -267,7 +273,7 @@ func scenarioTombstones(options: Options) async -> String {
         lostDeletes += lostThisRun
         if lostThisRun > 0 { runsWithLoss += 1 }
 
-        if options.trace, lostThisRun > 0 {
+        if options.verbose, lostThisRun > 0 {
             print("  run \(run): \(lostThisRun)/\(victims.count) deletes never applied locally")
         }
     }
@@ -286,19 +292,22 @@ func scenarioTombstones(options: Options) async -> String {
 
 func scenarioSoak(options: Options) async -> String {
     var random = SplitMix64(seed: options.seed)
-    let stack = Stack()
+    let stack = Stack(trace: globalTrace)
     var durations: [Int] = []
     var totalPushed = 0
     var totalPulled = 0
     var totalConflicts = 0
     var totalRetries = 0
     var totalErrors = 0
+    var totalTombstones = 0
     var offlineCycles = 0
 
     var localCreates = 0
     var localEdits = 0
     var remoteEdits = 0
     var remoteDeletes = 0
+    var localDeletes = 0
+    var concurrentEdits = 0
 
     for cycle in 0..<options.cycles {
         let roll = random.unit()
@@ -318,14 +327,33 @@ func scenarioSoak(options: Options) async -> String {
         // confirmed may have been re-keyed to the server's identity.
         let known = ((try? await stack.store.allItems()) ?? []).map(\.id)
 
-        switch random.int(0...3) {
-        case 0:
+        switch random.int(0...11) {
+        case 0, 1, 2:
             let item = stack.localItem(title: "Cycle \(cycle) Card", value: random.int(500...90_000))
             try? await stack.store.upsert(item)
             localCreates += 1
-            if options.trace { print("  cycle \(cycle): local create") }
+            if options.verbose { print("  cycle \(cycle): local create") }
 
-        case 1:
+        case 3, 4, 5:
+            // Concurrent edit: another device changes the row *and* we change it
+            // before the next sync, so the push arrives with a stale base version
+            // and the engine has to resolve a conflict.
+            if !known.isEmpty, let id = known.randomElement(using: &random),
+               await stack.server.item(id: id) != nil {
+                _ = await stack.server.remoteUpdate(id: id, notes: "remote edit in cycle \(cycle)")
+                remoteEdits += 1
+
+                if var existing = try? await stack.store.item(id: id) {
+                    existing.notes = "my edit in cycle \(cycle)"
+                    existing.updatedAt = Date(timeIntervalSinceNow: 5)
+                    existing.syncState = .pendingUpdate
+                    try? await stack.store.upsert(existing)
+                    concurrentEdits += 1
+                    if options.verbose { print("  cycle \(cycle): concurrent edit on \(id)") }
+                }
+            }
+
+        case 11:
             if !known.isEmpty, let id = known.randomElement(using: &random) {
                 if var existing = try? await stack.store.item(id: id) {
                     existing.notes = "edited in cycle \(cycle)"
@@ -334,24 +362,39 @@ func scenarioSoak(options: Options) async -> String {
                     existing.syncState = .pendingUpdate
                     try? await stack.store.upsert(existing)
                     localEdits += 1
-                    if options.trace { print("  cycle \(cycle): local edit") }
+                    if options.verbose { print("  cycle \(cycle): local edit") }
                 }
             }
 
-        case 2:
+        case 6, 7, 8:
             if !known.isEmpty, let id = known.randomElement(using: &random) {
                 if await stack.server.item(id: id) != nil {
                     _ = await stack.server.remoteUpdate(id: id, notes: "remote edit in cycle \(cycle)")
                     remoteEdits += 1
-                    if options.trace { print("  cycle \(cycle): remote edit") }
+                    if options.verbose { print("  cycle \(cycle): remote edit") }
+                }
+            }
+
+        case 9:
+            if !known.isEmpty, let id = known.randomElement(using: &random) {
+                if var existing = try? await stack.store.item(id: id) {
+                    existing.isDeleted = true
+                    existing.updatedAt = Date()
+                    existing.syncState = .pendingDelete
+                    try? await stack.store.upsert(existing)
+                    localDeletes += 1
+                    if options.verbose { print("  cycle \(cycle): local delete") }
                 }
             }
 
         default:
             if !known.isEmpty, let id = known.randomElement(using: &random) {
-                if await stack.server.remoteDelete(id: id) != nil {
+                // Only delete rows that are still live, the way a real "delete
+                // from another device" would.
+                if let remote = await stack.server.item(id: id), !remote.isDeleted {
+                    _ = await stack.server.remoteDelete(id: id)
                     remoteDeletes += 1
-                    if options.trace { print("  cycle \(cycle): remote delete") }
+                    if options.verbose { print("  cycle \(cycle): remote delete") }
                 }
             }
         }
@@ -363,6 +406,7 @@ func scenarioSoak(options: Options) async -> String {
         totalConflicts += report.conflicts
         totalRetries += report.retries
         totalErrors += report.errors
+        totalTombstones += report.tombstonesApplied
     }
 
     // Drain: reconnect to a perfect link and let the engine converge.
@@ -376,6 +420,7 @@ func scenarioSoak(options: Options) async -> String {
         totalConflicts += report.conflicts
         totalRetries += report.retries
         totalErrors += report.errors
+        totalTombstones += report.tombstonesApplied
         drainPasses += 1
         if await stack.store.pendingCount() == 0 { break }
     }
@@ -405,9 +450,9 @@ func scenarioSoak(options: Options) async -> String {
     return """
     scenario: soak
     cycles: \(options.cycles) (seed \(options.seed)); flaky/offline cycles: \(offlineCycles)
-    mutations: \(localCreates) local creates, \(localEdits) local edits, \(remoteEdits) remote edits, \(remoteDeletes) remote deletes
+    mutations: \(localCreates) local creates, \(localEdits) local edits, \(concurrentEdits) concurrent edits, \(localDeletes) local deletes, \(remoteEdits) remote edits, \(remoteDeletes) remote deletes
     drain passes: \(drainPasses)
-    pushed: \(totalPushed)  pulled: \(totalPulled)  conflicts: \(totalConflicts)  retries: \(totalRetries)  errors: \(totalErrors)
+    pushed: \(totalPushed)  pulled: \(totalPulled)  tombstones: \(totalTombstones)  conflicts: \(totalConflicts)  retries: \(totalRetries)  errors: \(totalErrors)
     conflict archive entries: \(conflicts.count)
     injected: \(metrics.droppedResponsesInjected) dropped responses, \(metrics.timeoutsInjected) timeouts, \(metrics.serverErrorsInjected) 5xx
     sync duration p50: \(p50) ms   p95: \(p95) ms   (n=\(durations.count))
@@ -436,6 +481,13 @@ func percentile(_ sorted: [Int], _ fraction: Double) -> Int {
 // MARK: - Entry point
 
 let options = Options.parse(Array(CommandLine.arguments.dropFirst()))
+
+/// When `--trace` is passed, every `TraceEvent` from the engine and the API
+/// client is printed as a real log line with a timestamp, a request id and a
+/// retry count. This is the exact output quoted in docs/DEBUGGING.md.
+let globalTrace: TraceSink? = options.trace ? TraceSink { event in
+    print(event.consoleLine)
+} : nil
 
 print("ShelfCaseSyncSoak — engine: ShelfCaseKit SyncEngine, transport: URLSessionAPIClient")
 print("")

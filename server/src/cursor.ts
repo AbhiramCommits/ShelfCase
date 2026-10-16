@@ -51,7 +51,9 @@ export function advanceCursor(
   rows: Array<{ updated_at: Date | string; change_seq: string | number }>,
 ): string {
   if (rows.length === 0) {
-    return incoming.updatedAt === null ? formatCursor(null, incoming.seq) : formatCursor(incoming.updatedAt, incoming.seq);
+    return incoming.updatedAt === null
+      ? formatCursor(null, incoming.seq)
+      : formatCursor(incoming.updatedAt, incoming.seq);
   }
   let best = rows[0]!;
   for (const row of rows) {

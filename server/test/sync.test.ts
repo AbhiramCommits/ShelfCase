@@ -1,16 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  BOB,
-  TOKENS,
-  app,
-  auth,
-  countRows,
-  createItem,
-  pool,
-  randomUUID,
-  request,
-  resetDatabase,
-} from "./helpers.js";
+import { BOB, TOKENS, app, auth, countRows, createItem, pool, randomUUID, request, resetDatabase } from "./helpers.js";
 
 const application = app();
 
@@ -202,10 +191,7 @@ describe("GET /sync/pull", () => {
       .send({ titleQuery: "pulled", maxPriceCents: 9_999 })
       .expect(201);
 
-    const response = await request(application)
-      .get("/sync/pull")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    const response = await request(application).get("/sync/pull").set("Authorization", auth(TOKENS.alice)).expect(200);
 
     expect(response.body.items).toHaveLength(1);
     expect(response.body.observations).toHaveLength(1);
@@ -217,10 +203,7 @@ describe("GET /sync/pull", () => {
 
   it("advances the cursor monotonically and only returns newer rows", async () => {
     await createItem(application, "alice", { title: "One" });
-    const first = await request(application)
-      .get("/sync/pull")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    const first = await request(application).get("/sync/pull").set("Authorization", auth(TOKENS.alice)).expect(200);
     const cursor1 = first.body.nextCursor as string;
 
     const idle = await request(application)
@@ -244,15 +227,9 @@ describe("GET /sync/pull", () => {
 
   it("includes tombstones so deletes propagate", async () => {
     const item = await createItem(application, "alice", { title: "Vanishing" });
-    const before = await request(application)
-      .get("/sync/pull")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    const before = await request(application).get("/sync/pull").set("Authorization", auth(TOKENS.alice)).expect(200);
 
-    await request(application)
-      .delete(`/items/${item.id}`)
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    await request(application).delete(`/items/${item.id}`).set("Authorization", auth(TOKENS.alice)).expect(200);
 
     const after = await request(application)
       .get(`/sync/pull?since=${encodeURIComponent(before.body.nextCursor)}`)
@@ -285,9 +262,8 @@ describe("GET /sync/pull", () => {
     const aliceCard = await createItem(application, "alice");
     const bobCard = await createItem(application, "bob");
 
-    const cursor = (
-      await request(application).get("/sync/pull").set("Authorization", auth(TOKENS.bob)).expect(200)
-    ).body.nextCursor as string;
+    const cursor = (await request(application).get("/sync/pull").set("Authorization", auth(TOKENS.bob)).expect(200))
+      .body.nextCursor as string;
 
     const proposed = await request(application)
       .post("/trades")
@@ -342,9 +318,7 @@ describe("cursor arithmetic", () => {
       await createItem(application, "alice", { title: `Row ${index}` });
     }
 
-    const { rows } = await pool.query<{ change_seq: string }>(
-      `SELECT change_seq FROM items ORDER BY change_seq ASC`,
-    );
+    const { rows } = await pool.query<{ change_seq: string }>(`SELECT change_seq FROM items ORDER BY change_seq ASC`);
     const seqs = rows.map((row) => Number(row.change_seq));
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
     expect(new Set(seqs).size).toBe(seqs.length);

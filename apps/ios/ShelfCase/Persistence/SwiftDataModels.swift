@@ -26,6 +26,9 @@ final class ItemEntity {
     var isDeleted: Bool
     var syncStateRaw: String
     var ownerUserId: UUID?
+    /// `Idempotency-Key` pinned to this row while it has an unpushed change.
+    /// Persisted so a retry after an app relaunch presents the same key.
+    var idempotencyKey: String?
 
     init(
         id: UUID = UUID(),
@@ -42,7 +45,8 @@ final class ItemEntity {
         version: Int = 1,
         isDeleted: Bool = false,
         syncState: SyncState = .pendingCreate,
-        ownerUserId: UUID? = nil
+        ownerUserId: UUID? = nil,
+        idempotencyKey: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -59,6 +63,7 @@ final class ItemEntity {
         self.isDeleted = isDeleted
         self.syncStateRaw = syncState.rawValue
         self.ownerUserId = ownerUserId
+        self.idempotencyKey = idempotencyKey
     }
 
     convenience init(domain: CollectibleItem) {

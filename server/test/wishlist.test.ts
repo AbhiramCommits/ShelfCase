@@ -1,13 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  BOB,
-  TOKENS,
-  app,
-  auth,
-  countRows,
-  request,
-  resetDatabase,
-} from "./helpers.js";
+import { BOB, TOKENS, app, auth, countRows, request, resetDatabase } from "./helpers.js";
 
 const application = app();
 
@@ -24,20 +16,12 @@ describe("wishlist CRUD", () => {
       .expect(201);
 
     expect(created.body.wishlistEntry.titleQuery).toBe("charizard");
-    expect(created.body.wishlistEntry.userId).toBe(
-      "11111111-1111-4111-8111-111111111111",
-    );
+    expect(created.body.wishlistEntry.userId).toBe("11111111-1111-4111-8111-111111111111");
 
-    const listed = await request(application)
-      .get("/wishlist")
-      .set("Authorization", auth(TOKENS.alice))
-      .expect(200);
+    const listed = await request(application).get("/wishlist").set("Authorization", auth(TOKENS.alice)).expect(200);
     expect(listed.body.wishlistEntries).toHaveLength(1);
 
-    const otherUser = await request(application)
-      .get("/wishlist")
-      .set("Authorization", auth(TOKENS.bob))
-      .expect(200);
+    const otherUser = await request(application).get("/wishlist").set("Authorization", auth(TOKENS.bob)).expect(200);
     expect(otherUser.body.wishlistEntries).toHaveLength(0);
 
     const patched = await request(application)
