@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: shelfcase-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shelfcase
+      POSTGRES_PASSWORD: shelfcase
+      POSTGRES_DB: shelfcase
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "55432:5432"
+    volumes:
+      - shelfcase-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shelfcase -d shelfcase"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  shelfcase-pgdata:

@@ -1,0 +1,39 @@
+# --- macOS ---
+.DS_Store
+
+# --- Swift / SwiftPM ---
+.build/
+.swiftpm/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+Package.resolved
+
+# --- Xcode build products ---
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# --- Node ---
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+.npm/
+
+# --- Env / secrets ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Test / tooling artefacts ---
+/test-results/
+*.log
+!docs/**/*.log
+tmp/
