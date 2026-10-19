@@ -57,8 +57,8 @@ public struct TelemetryEvent: Codable, Sendable, Equatable {
 public actor Telemetry {
     public static let shared = Telemetry()
 
-    private let logger = Logger(subsystem: Self.subsystem, category: "telemetry")
-    private let syncSignposter = OSSignposter(subsystem: Self.subsystem, category: "sync")
+    private let logger = Logger(subsystem: Telemetry.subsystem, category: "telemetry")
+    private let syncSignposter = OSSignposter(subsystem: Telemetry.subsystem, category: "sync")
 
     private static let subsystem = "com.shelfcase.app"
     private static let maxFileBytes = 1_024 * 1_024

@@ -89,7 +89,9 @@ jobs:
 
   ios:
     name: ios
-    runs-on: macos-14
+    # Swift Testing (`import Testing`) ships with Xcode 16+. The macos-14
+    # image defaults to Xcode 15.x, where the module does not exist.
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +101,19 @@ jobs:
           swift --version
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphonesimulator || true
+
+      # Simulator device names change between runner images, so pick the
+      # first available iPhone instead of hardcoding a model.
+      - name: Pick an iPhone simulator
+        run: |
+          SIM=$(xcrun simctl list devices available | sed -nE 's/^ +(iPhone [0-9][^(]*[^ (]) \(.*/\1/p' | head -n1)
+          if [ -z "$SIM" ]; then
+            echo "No available iPhone simulator on this runner" >&2
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator: $SIM"
+          echo "SIM=$SIM" >> "$GITHUB_ENV"
 
       - name: Cache SwiftPM build products
         uses: actions/cache@v4
@@ -115,8 +130,8 @@ jobs:
           brew install xcodegen
           xcodegen --version
 
-      # Full Xcode is present on this runner, so Swift Testing and XCTest both
-      # work and no plugin-path workaround is needed here.
+      # Full Xcode 16 is present on this runner, so Swift Testing and XCTest
+      # both work and no plugin-path workaround is needed here.
       - name: ShelfCaseKit tests with coverage
         working-directory: ShelfCaseKit
         run: swift test --enable-code-coverage
@@ -142,7 +157,7 @@ jobs:
           xcodebuild build \
             -project ShelfCase.xcodeproj \
             -scheme ShelfCase \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination "platform=iOS Simulator,name=$SIM" \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO
 
@@ -153,7 +168,7 @@ jobs:
           xcodebuild test \
             -project ShelfCase.xcodeproj \
             -scheme ShelfCase \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination "platform=iOS Simulator,name=$SIM" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Capture a simulator screenshot
@@ -162,9 +177,9 @@ jobs:
         run: |
           set -euo pipefail
           APP_DIR=$(xcodebuild -project ShelfCase.xcodeproj -scheme ShelfCase \
-            -destination 'platform=iOS Simulator,name=iPhone 15' -showBuildSettings \
+            -destination "platform=iOS Simulator,name=$SIM" -showBuildSettings \
             | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2; exit}' | xargs)
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl boot "$SIM" || true
           xcrun simctl install booted "$APP_DIR/ShelfCase.app"
           xcrun simctl launch booted com.shelfcase.app
           sleep 5

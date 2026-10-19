@@ -7,7 +7,7 @@ import ShelfCaseKit
 struct PortfolioView: View {
     @EnvironmentObject private var environment: AppEnvironment
 
-    @Query(filter: #Predicate<ItemEntity> { $0.isDeleted == false })
+    @Query(filter: #Predicate<ItemEntity> { $0.isSoftDeleted == false })
     private var items: [ItemEntity]
 
     var body: some View {

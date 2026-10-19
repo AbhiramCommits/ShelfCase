@@ -19,11 +19,14 @@ final class NetworkMonitor: ObservableObject {
             let online = path.status == .satisfied
             let expensive = path.isExpensive
             let name: String
-            switch path.interfaceTypes {
-            case let types where types.contains(.wifi): name = "wifi"
-            case let types where types.contains(.cellular): name = "cellular"
-            case let types where types.contains(.wiredEthernet): name = "ethernet"
-            default: name = "other"
+            if path.usesInterfaceType(.wifi) {
+                name = "wifi"
+            } else if path.usesInterfaceType(.cellular) {
+                name = "cellular"
+            } else if path.usesInterfaceType(.wiredEthernet) {
+                name = "ethernet"
+            } else {
+                name = "other"
             }
             Task { @MainActor in
                 self?.isOnline = online

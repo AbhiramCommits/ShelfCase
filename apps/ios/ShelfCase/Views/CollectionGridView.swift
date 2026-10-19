@@ -9,7 +9,7 @@ struct CollectionGridView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query(
-        filter: #Predicate<ItemEntity> { $0.isDeleted == false },
+        filter: #Predicate<ItemEntity> { $0.isSoftDeleted == false },
         sort: [SortDescriptor(\ItemEntity.updatedAt, order: .reverse)]
     )
     private var items: [ItemEntity]

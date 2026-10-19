@@ -37,7 +37,7 @@ public actor SwiftDataLocalStore: LocalStore {
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return try context.fetch(descriptor)
-            .filter { includeDeleted || !$0.isDeleted }
+            .filter { includeDeleted || !$0.isSoftDeleted }
             .map(\.asDomain)
     }
 
@@ -57,7 +57,7 @@ public actor SwiftDataLocalStore: LocalStore {
             // A tombstone is the exception — the row is gone server-side, so the
             // local copy must go too or the next edit resurrects it.
             if item.isDeleted {
-                existing.isDeleted = true
+                existing.isSoftDeleted = true
                 existing.version = item.version
                 existing.updatedAt = item.updatedAt
                 existing.syncStateRaw = SyncState.synced.rawValue
@@ -115,7 +115,7 @@ public actor SwiftDataLocalStore: LocalStore {
 
     public func markAllDeletedLocally(id: UUID) async throws {
         guard let existing = try entity(id: id) else { return }
-        existing.isDeleted = true
+        existing.isSoftDeleted = true
         existing.syncStateRaw = SyncState.synced.rawValue
         try save()
     }
