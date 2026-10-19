@@ -67,7 +67,7 @@ final class ItemEntity {
     }
 
     convenience init(domain: CollectibleItem) {
-        self.init(id: domain.id)
+        self.init(id: domain.id, title: domain.title)
         apply(domain)
     }
 
