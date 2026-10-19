@@ -252,7 +252,7 @@ struct ProposeTradeSheet: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query(
-        filter: #Predicate<ItemEntity> { $0.isDeleted == false },
+        filter: #Predicate<ItemEntity> { $0.isSoftDeleted == false },
         sort: [SortDescriptor(\ItemEntity.title)])
     private var items: [ItemEntity]
 

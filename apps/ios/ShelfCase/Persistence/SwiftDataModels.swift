@@ -23,7 +23,10 @@ final class ItemEntity {
     var imageLocalPath: String?
     var updatedAt: Date
     var version: Int
-    var isDeleted: Bool
+    /// Sync tombstone. Not named `isDeleted`: that name is already taken by
+    /// SwiftData's `PersistentModel.isDeleted` ("removed from the context"),
+    /// which shadowed this flag and broke every soft-delete filter.
+    @Attribute(originalName: "isDeleted") var isSoftDeleted: Bool
     var syncStateRaw: String
     var ownerUserId: UUID?
     /// `Idempotency-Key` pinned to this row while it has an unpushed change.
@@ -60,7 +63,7 @@ final class ItemEntity {
         self.imageLocalPath = imageLocalPath
         self.updatedAt = updatedAt
         self.version = version
-        self.isDeleted = isDeleted
+        self.isSoftDeleted = isDeleted
         self.syncStateRaw = syncState.rawValue
         self.ownerUserId = ownerUserId
         self.idempotencyKey = idempotencyKey
@@ -90,7 +93,7 @@ final class ItemEntity {
             imageLocalPath: imageLocalPath,
             updatedAt: updatedAt,
             version: version,
-            isDeleted: isDeleted,
+            isDeleted: isSoftDeleted,
             syncState: syncState,
             ownerUserId: ownerUserId
         )
@@ -109,7 +112,7 @@ final class ItemEntity {
         imageLocalPath = domain.imageLocalPath
         updatedAt = domain.updatedAt
         version = domain.version
-        isDeleted = domain.isDeleted
+        isSoftDeleted = domain.isDeleted
         syncStateRaw = domain.syncState.rawValue
         ownerUserId = domain.ownerUserId
     }
