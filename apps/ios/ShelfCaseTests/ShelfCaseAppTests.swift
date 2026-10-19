@@ -33,7 +33,8 @@ final class SwiftDataLocalStoreTests: XCTestCase {
         let loaded = try await store.item(id: item.id)
 
         XCTAssertEqual(loaded, item)
-        XCTAssertEqual(try await store.allItems().count, 1)
+        let allItems = try await store.allItems()
+        XCTAssertEqual(allItems.count, 1)
     }
 
     func testPendingItemsAreReturnedOldestFirst() async throws {
@@ -65,7 +66,8 @@ final class SwiftDataLocalStoreTests: XCTestCase {
             serverUpdatedAt: Date()
         )
 
-        XCTAssertNil(try await store.item(id: localId))
+        let original = try await store.item(id: localId)
+        XCTAssertNil(original)
         let rekeyed = try await store.item(id: serverId)
         XCTAssertEqual(rekeyed?.version, 3)
         XCTAssertEqual(rekeyed?.syncState, .synced)
@@ -73,9 +75,11 @@ final class SwiftDataLocalStoreTests: XCTestCase {
 
     func testCursorIsPersistedInMetadata() async throws {
         let (store, _) = try makeStore()
-        XCTAssertNil(try await store.cursor())
+        let initialCursor = try await store.cursor()
+        XCTAssertNil(initialCursor)
         try await store.setCursor("2026-01-01T00:00:00.000Z|42")
-        XCTAssertEqual(try await store.cursor(), "2026-01-01T00:00:00.000Z|42")
+        let storedCursor = try await store.cursor()
+        XCTAssertEqual(storedCursor, "2026-01-01T00:00:00.000Z|42")
     }
 
     func testConflictArchivePreservesBothCopies() async throws {
@@ -129,8 +133,10 @@ final class SwiftDataLocalStoreTests: XCTestCase {
         item.syncState = .synced
         try await store.upsert(item)
 
-        XCTAssertEqual(try await store.allItems().count, 0)
-        XCTAssertEqual(try await store.allItems(includeDeleted: true).count, 1)
+        let visible = try await store.allItems()
+        let everything = try await store.allItems(includeDeleted: true)
+        XCTAssertEqual(visible.count, 0)
+        XCTAssertEqual(everything.count, 1)
     }
 }
 
